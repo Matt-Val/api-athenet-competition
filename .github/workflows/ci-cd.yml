@@ -3,11 +3,7 @@ name: Competition CI/CD
 on:
   pull_request:
   push:
-<<<<<<< Updated upstream
-    branches: [develop]
-=======
     branches: [main, develop]
->>>>>>> Stashed changes
   workflow_dispatch:
 
 permissions:
