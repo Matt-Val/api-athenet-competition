@@ -42,12 +42,21 @@ public class PublicCompetitionController {
         return ResponseEntity.ok(response);
     }
 
-    
+    /* 
+        Devuelve la competencia, sus equipos y sus partidos. 
+        Nunca incluye borradores (DRAFT).
+        Solo incluye competencias activas y finalizadas.
+    */
     @GetMapping("/{id}")
     public ResponseEntity<CompetitionResponse> getById(@PathVariable Long id) {
         return ResponseEntity.ok(competitionMapper.toResponse(competitionService.getById(id)));
     }
 
+    /* 
+        Devuelve los equipos inscritos en la competencia. 
+        Nunca incluye borradores (DRAFT).
+        Solo incluye competencias activas y finalizadas.
+    */
     @GetMapping("/{id}/teams")
     public ResponseEntity<List<EnrollmentResponse>> listTeams(@PathVariable Long id) {
         List<EnrollmentResponse> response = enrollmentService.listByCompetition(id).stream()
@@ -56,6 +65,11 @@ public class PublicCompetitionController {
         return ResponseEntity.ok(response);
     }
 
+    /* 
+        Devuelve los partidos de la competencia. 
+        Nunca incluye borradores (DRAFT).
+        Solo incluye competencias activas y finalizadas.
+    */
     @GetMapping("/{id}/matches")
     public ResponseEntity<List<MatchResponse>> listMatches(@PathVariable Long id) {
         List<MatchResponse> response = matchService.listByCompetition(id).stream()

@@ -1,0 +1,51 @@
+package com.athenet.competition.messaging;
+
+import java.time.Instant;
+import java.util.UUID;
+
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.stereotype.Component;
+
+import com.athenet.competition.config.RabbitConfig;
+import com.athenet.competition.model.Competition;
+import com.athenet.competition.model.Enrollment;
+import com.athenet.competition.model.Match;
+
+import lombok.RequiredArgsConstructor;
+
+/* 
+    Publica resultado.registrado cada vez que MatchService.registerResult
+    guarda un resultado nuevo o una corrección.
+*/
+@Component
+@RequiredArgsConstructor
+public class ResultEventPublisher {
+
+    private final RabbitTemplate rabbitTemplate;
+
+    public void publish(Match match, Competition competition, Enrollment home, Enrollment away) {
+        ResultRegisteredMessage data = new ResultRegisteredMessage(
+                match.getId(),
+                match.getCompetitionId(),
+                competition.getSportId(),
+                match.getEventId(),
+                match.getVersion(),
+                match.getHomeTeamId(),
+                match.getAwayTeamId(),
+                home.getInstitutionId(),
+                away.getInstitutionId(),
+                match.getHomeScore(),
+                match.getAwayScore(),
+                match.isSimulated(),
+                new ResultRegisteredMessage.Points(
+                        competition.getWinPoints(), competition.getDrawPoints(), competition.getLossPoints()));
+
+        ResultRegisteredEnvelope envelope = new ResultRegisteredEnvelope(
+                UUID.randomUUID().toString(),
+                Instant.now().toString(),
+                RabbitConfig.RESULT_REGISTERED_ROUTING_KEY,
+                data);
+
+        rabbitTemplate.convertAndSend(RabbitConfig.EXCHANGE, RabbitConfig.RESULT_REGISTERED_ROUTING_KEY, envelope);
+    }
+}

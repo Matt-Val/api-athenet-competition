@@ -24,6 +24,11 @@ public class PublicMatchController {
     private final MatchService matchService;
     private final MatchMapper matchMapper;
 
+    /* 
+        Devuelve el partido correspondiente al eventId. 
+        Nunca incluye borradores (DRAFT).
+        Solo incluye competencias activas y finalizadas.
+    */
     @GetMapping
     public ResponseEntity<MatchResponse> getByEventId(@RequestParam Long eventId) {
         return ResponseEntity.ok(matchMapper.toResponse(matchService.getByEventIdOrThrow(eventId)));

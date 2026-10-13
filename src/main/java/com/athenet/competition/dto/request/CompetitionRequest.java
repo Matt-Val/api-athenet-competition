@@ -12,7 +12,7 @@ import jakarta.validation.constraints.Size;
 /* 
     Se usa para crear o actualizar (POST/PUT /api/admin/competitions).
     WinPoints/DrawPoints/LossPoints son opcionales: si vienen null,
-    el mapper aplica los defaults 3/1/0 del documento.
+    el mapper aplica los defaults 3/1/0.
 
 */
 
