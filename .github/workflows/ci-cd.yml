@@ -3,7 +3,7 @@ name: Competition CI/CD
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [develop]
   workflow_dispatch:
 
 permissions:
