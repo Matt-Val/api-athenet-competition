@@ -216,9 +216,9 @@ Dentro del contenedor, `localhost` apunta al propio contenedor: usar direcciones
 
 El workflow `.github/workflows/ci-cd.yml` tiene tres etapas:
 
-1. **Test:** ejecuta `./mvnw verify` en pull requests y pushes a `main`.
+1. **Test:** ejecuta `./mvnw verify` en pull requests y pushes a `main` o `develop`.
 2. **Build & Push:** publica en GHCR una imagen etiquetada con el SHA del commit, después de pasar las pruebas y fuera de pull requests.
-3. **Deploy manual:** desde **Actions → Competition CI/CD → Run workflow**, en `main`, despliega por SSH al EC2 usando el environment `production`.
+3. **Deploy manual:** desde **Actions → Competition CI/CD → Run workflow**, seleccionando `main` o `develop`, despliega por SSH al EC2 usando el environment `production`. Un push publica la imagen, pero no despliega. El environment debe permitir la rama seleccionada.
 
 Configurar los secrets de GitHub `EC2_APP_HOST`, `EC2_SSH_USER` y `EC2_SSH_KEY`. Preparar Docker en el EC2 y `/opt/athenet/competition.env` con las variables reales, legible por el usuario de despliegue y con permisos restringidos. Permitir acceso al puerto 8082 desde los clientes correspondientes. Para imágenes privadas, conceder al workflow acceso de lectura al paquete GHCR.
 

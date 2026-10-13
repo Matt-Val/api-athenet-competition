@@ -3,7 +3,11 @@ name: Competition CI/CD
 on:
   pull_request:
   push:
+<<<<<<< Updated upstream
     branches: [develop]
+=======
+    branches: [main, develop]
+>>>>>>> Stashed changes
   workflow_dispatch:
 
 permissions:
@@ -49,7 +53,7 @@ jobs:
           tags: ${{ steps.image.outputs.name }}:${{ github.sha }}
 
   deploy:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     needs: image
     runs-on: ubuntu-latest
     environment: production
