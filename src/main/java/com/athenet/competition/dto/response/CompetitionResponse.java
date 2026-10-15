@@ -12,6 +12,7 @@ public record CompetitionResponse(
     Long sportId,
     String season,
     String description,
+    String competitionImg,
     CompetitionStatus status,
     LocalDate startDate,
     LocalDate endDate,

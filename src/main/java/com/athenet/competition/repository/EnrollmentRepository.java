@@ -19,4 +19,7 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, Long> {
 
     // Usado al editar una competencia: no deja cambiar el deporte si ya hay equipos inscritos
     boolean existsByCompetitionId(Long competitionId);
+
+    // Cupo de la copa
+    long countByCompetitionId(Long competitionId);
 }

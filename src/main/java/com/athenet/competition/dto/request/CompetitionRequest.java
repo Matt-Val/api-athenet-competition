@@ -34,6 +34,10 @@ public record CompetitionRequest(
 
     String description,
 
+    @NotBlank(message = "La imagen de la competencia es obligatoria")
+    @Size(max = 500, message = "La imagen no puede superar los 500 caracteres")
+    String competitionImg,
+
     LocalDate startDate,
 
     LocalDate endDate,

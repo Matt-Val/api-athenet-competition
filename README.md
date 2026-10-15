@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-Microservicio de competencias de <strong>Athenet</strong>: administra competencias, nómina de equipos, fixture y resultados deportivos. Consume eventos de RabbitMQ y publica los resultados que utilizan Ranking y Eventos.
+Microservicio de competencias de <strong>Athenet</strong>: administra competencias, nómina de equipos, la llave de la copa y los resultados deportivos. Publica en RabbitMQ los partidos programados, que Eventos copia a su calendario, y los resultados que utiliza Ranking.
 </p>
 
 <h4 align="center"><strong>
@@ -37,54 +37,87 @@ Microservicio de competencias de <strong>Athenet</strong>: administra competenci
 
 ### ms-competition
 
-Competencia es la fuente de verdad de los resultados. Los partidos de su fixture se crean al consumir eventos `MATCH` asociados a una competencia desde MS-Eventos. Los datos de equipos y deportes se consultan mediante endpoints GET de MS-Instituciones; cada servicio mantiene su propia base de datos.
+Competencia es la dueña de los encuentros y la fuente de verdad de los resultados. Por ahora solo hay copas (`CUP`) de 16 equipos: al crear la copa se genera su llave vacía de 15 partidos (8vos, 4tos, semis y final). El director sortea los octavos y programa cada partido; el delegado asignado lo inicia y carga el resultado final. Los datos de equipos y deportes se consultan mediante endpoints GET de MS-Instituciones; cada servicio mantiene su propia base de datos.
 
-* **Pública (`/api/public/**`):** consulta de competencias, nómina, fixture y resultado de un evento, sin autenticación. El listado de competencias excluye `DRAFT`.
-* **Administrativa (`/api/admin/competitions/**`):** gestión de competencias y equipos, resultados y simulación, reservada al rol `DIRECTOR`.
+* **Pública (`/api/public/**`):** consulta de competencias, nómina, llave y marcador de un partido, sin autenticación. El listado de competencias excluye `DRAFT`.
+* **Administrativa (`/api/admin/competitions/**`):** gestión de competencias, equipos y programación de partidos, reservada al rol `DIRECTOR`.
+* **Delegado (`/api/delegate/matches/**`):** iniciar, finalizar y corregir los partidos asignados, reservada al rol `DELEGATE`.
 
 | Método | Endpoint | Acceso | Descripción |
 | :--- | :--- | :--- | :--- |
 | `GET` | `/api/public/competitions?sportId&status` | Público | Listado sin borradores, con filtros opcionales |
 | `GET` | `/api/public/competitions/{id}` | Público | Detalle de competencia |
 | `GET` | `/api/public/competitions/{id}/teams` | Público | Nómina de equipos |
-| `GET` | `/api/public/competitions/{id}/matches` | Público | Fixture y resultados |
-| `GET` | `/api/public/matches?eventId={eventId}` | Público | Partido asociado al ID numérico del evento |
+| `GET` | `/api/public/competitions/{id}/matches` | Público | Llave y resultados |
+| `GET` | `/api/public/matches/{id}` | Público | Partido por ID (Eventos lo guarda como `competitionMatchId`) |
 | `GET` | `/api/admin/competitions?sportId` | `DIRECTOR` | Listado que incluye borradores |
-| `POST` | `/api/admin/competitions` | `DIRECTOR` | Crear competencia y validar el deporte |
+| `GET` | `/api/admin/competitions/{id}` | `DIRECTOR` | Detalle en cualquier estado |
+| `POST` | `/api/admin/competitions` | `DIRECTOR` | Crear copa, validar el deporte y generar la llave |
 | `PUT` | `/api/admin/competitions/{id}` | `DIRECTOR` | Actualizar competencia |
-| `PATCH` | `/api/admin/competitions/{id}/status` | `DIRECTOR` | Avanzar `DRAFT` → `IN_PROGRESS` → `FINISHED` |
-| `DELETE` | `/api/admin/competitions/{id}` | `DIRECTOR` | Eliminar una competencia en `DRAFT` |
-| `POST` | `/api/admin/competitions/{id}/teams` | `DIRECTOR` | Inscribir equipo con `{ "teamId": 1 }` |
+| `PATCH` | `/api/admin/competitions/{id}/status` | `DIRECTOR` | Iniciar la copa (`DRAFT` → `IN_PROGRESS`) |
+| `DELETE` | `/api/admin/competitions/{id}` | `DIRECTOR` | Eliminar una competencia en `DRAFT` y su llave |
+| `GET` | `/api/admin/competitions/{id}/teams` | `DIRECTOR` | Nómina de equipos |
+| `POST` | `/api/admin/competitions/{id}/teams` | `DIRECTOR` | Inscribir equipo con `{ "teamId": 1 }` (máximo 16) |
 | `DELETE` | `/api/admin/competitions/{id}/teams/{teamId}` | `DIRECTOR` | Quitar equipo si no tiene partidos |
-| `PUT` | `/api/admin/competitions/{id}/matches/{matchId}/result` | `DIRECTOR` | Registrar o corregir resultado |
-| `POST` | `/api/admin/competitions/{id}/matches/{matchId}/simulate` | `DIRECTOR` | Simular un partido `SCHEDULED` |
+| `GET` | `/api/admin/competitions/{id}/matches` | `DIRECTOR` | Llave ordenada por ronda y posición |
+| `PUT` | `/api/admin/competitions/{id}/matches/{matchId}` | `DIRECTOR` | Programar partido y sortear octavos |
+| `GET` | `/api/delegate/matches` | `DELEGATE` | Partidos asignados en competencias iniciadas |
+| `POST` | `/api/delegate/matches/{matchId}/start` | `DELEGATE` | Iniciar el partido |
+| `PUT` | `/api/delegate/matches/{matchId}/result` | `DELEGATE` | Finalizar o corregir el resultado |
 
-No se permite cambiar el deporte si hay equipos inscritos. Las inscripciones comprueban que el equipo exista, esté activo y pertenezca al mismo deporte, y guardan una copia de su nombre, logo e institución.
+No se permite cambiar el tipo, ni el deporte si hay equipos inscritos. Las inscripciones comprueban que el equipo exista, esté activo y pertenezca al mismo deporte, y guardan una copia de su nombre, logo e institución.
+
+#### Reglas de la copa
+
+* **Sorteo:** los equipos solo se eligen en octavos y con la copa en `DRAFT`. Deben estar inscritos, ser distintos y no repetirse en otro partido de octavos. En las demás rondas los define el ganador del partido anterior: el partido N de una ronda alimenta al ⌈N/2⌉ de la siguiente, como local si N es impar y como visita si es par.
+* **Programación:** el director edita fecha, hora, lugar y delegado mientras el partido no comience. Un partido es "completo" con ambos equipos, fecha, hora y delegado. Con la copa en curso, un partido completo no puede quedar incompleto.
+* **Inicio de la copa:** `DRAFT` → `IN_PROGRESS` exige 16 equipos inscritos y los octavos sorteados. La copa pasa sola a `FINISHED` al registrar el resultado de la final.
+* **Resultados:** solo el delegado asignado (claim `oid` del token igual a `delegateOid` del partido) inicia y finaliza el partido. No hay empates. Una corrección que cambia al ganador solo se acepta si el partido siguiente no ha comenzado; el director nunca registra ni corrige resultados.
 
 ### Control de Acceso y Roles
 
-`SecurityConfig` valida JWT contra el issuer configurado y convierte el claim `roles` a authorities de Spring Security. Los endpoints `/api/admin/**` requieren `ROLE_DIRECTOR`.
+`SecurityConfig` valida JWT contra el issuer configurado y convierte el claim `roles` a authorities de Spring Security. Los endpoints `/api/admin/**` requieren `ROLE_DIRECTOR` y `/api/delegate/**` requiere `ROLE_DELEGATE`.
 
-* **`DIRECTOR`:** permite gestionar competencias, nómina, resultados y simulaciones.
-* **Sin token válido:** respuesta `401` en rutas administrativas.
-* **Token válido sin rol de director:** respuesta `403`; el rol `admin` no concede acceso automáticamente.
+* **`DIRECTOR`:** permite gestionar competencias, nómina y programación de partidos.
+* **`DELEGATE`:** permite iniciar, finalizar y corregir solo los partidos donde es el delegado asignado; otro delegado recibe `403`.
+* **Sin token válido:** respuesta `401` en rutas administrativas y de delegado.
+* **Token válido sin el rol:** respuesta `403`; el rol `admin` no concede acceso automáticamente.
 * **Rutas públicas:** `/api/public/**` no requieren token.
 
 Enviar el access token de Microsoft Entra en `Authorization: Bearer <token>`. Configurar las audiencias admitidas según el registro de la API. CORS admite los orígenes del frontend administrativo, sin incluir rutas como `/web-athenet-org`.
 
-Los errores de aplicación siguen el formato `ApiError`: `timestamp`, `status`, `error`, `message`. Se utilizan `400` para validación, `404` para recursos inexistentes, `409` para conflictos y `503` cuando Instituciones no responde.
+Los errores de aplicación siguen el formato `ApiError`: `timestamp`, `status`, `error`, `message`. Se utilizan `400` para validación, `403` para un delegado que no es el asignado, `404` para recursos inexistentes, `409` para conflictos y `503` cuando Instituciones no responde.
 
 ### Mensajería RabbitMQ
 
+Competencia solo publica; cada consumidor declara su cola, binding y DLQ. Detalle de colas, reintentos, DLQ y prueba local en [docs/dev/rabbitmq.md](docs/dev/rabbitmq.md).
+
 | Routing key | Dirección | Cola | Efecto |
 | :--- | :--- | :--- | :--- |
-| `evento.creado` / `evento.actualizado` | Consume | `competencia.eventos` | Crea o actualiza el partido por `eventId` |
-| `evento.cancelado` | Consume | `competencia.eventos` | Marca el partido `CANCELLED` |
-| `resultado.registrado` | Publica | `ranking.resultados` y `eventos.resultados`, declaradas por sus consumidores | Ranking recalcula la tabla y Eventos marca el evento `FINISHED` |
+| `partido.actualizado` | Publica | `eventos.partidos`, declarada por Eventos | Eventos crea o actualiza su copia del partido (`PARTIDO-{matchId}`) |
+| `resultado.registrado` | Publica | `ranking.resultados`, declarada por Ranking | Ranking recalcula la tabla |
 
-El exchange es `athenet.topic`. El listener recibe el mensaje crudo y deserializa explícitamente su JSON a `EventEnvelope` con `rabbitObjectMapper`, evitando depender del header de clase Java del publicador. Si falla, hay tres reintentos después del intento inicial; al agotarlos, se rechaza sin reencolar y se dirige a `competencia.eventos.dlq` mediante `athenet.dlx`.
+El exchange es `athenet.topic`. `partido.actualizado` se publica cada vez que se guarda un partido completo de una competencia que ya no es borrador: al iniciar la copa, al programar un partido, al avanzar un ganador y al editar la competencia. Los borradores nunca llegan a Eventos.
 
-El resultado se publica con este contrato en inglés:
+```json
+{
+  "messageId": "uuid",
+  "occurredAt": "2026-10-12T21:00:00Z",
+  "type": "partido.actualizado",
+  "data": {
+    "matchId": 1, "competitionId": 1, "sportId": 1,
+    "title": "Octavos de final: Halcones vs Pumas",
+    "description": "Copa Instituciones de Chile 2026",
+    "competitionImg": "https://...",
+    "date": "2026-11-08", "time": "18:00",
+    "location": "Santiago, Chile", "address": "Av. Grecia 2001",
+    "homeTeamId": 1, "awayTeamId": 2,
+    "delegateOid": "uuid", "delegateDisplayName": "Delegado de prueba"
+  }
+}
+```
+
+El resultado se publica cada vez que el delegado finaliza o corrige un partido:
 
 ```json
 {
@@ -92,17 +125,17 @@ El resultado se publica con este contrato en inglés:
   "occurredAt": "2026-10-12T21:00:00Z",
   "type": "resultado.registrado",
   "data": {
-    "matchId": 1, "competitionId": 1, "sportId": 1, "eventId": 57,
+    "matchId": 1, "competitionId": 1, "sportId": 1,
     "version": 1,
     "homeTeamId": 1, "awayTeamId": 2,
     "homeInstitutionId": 3, "awayInstitutionId": 7,
-    "homeScore": 2, "awayScore": 1, "simulated": false,
+    "homeScore": 2, "awayScore": 1,
     "points": { "win": 3, "draw": 1, "loss": 0 }
   }
 }
 ```
 
-Ranking y Eventos deben declarar sus colas y bindings antes de publicar. La tabla y el estado del evento se actualizan de forma eventual.
+Ranking y Eventos deben declarar sus colas y bindings antes de que se publique. La tabla y el calendario se actualizan de forma eventual.
 
 ### Desarrollo Local
 
@@ -153,6 +186,16 @@ INSTITUTION_API_URL=http://<host-instituciones>:8080
 
 Nunca subir `.env`, `application-local.properties`, tokens o claves privadas al repositorio.
 
+#### Migración de la llave (una vez)
+
+El esquema lo crea Hibernate (`ddl-auto=update`), que no borra columnas ni quita `NOT NULL`. Tras el cambio del modelo de partidos (llave de la copa, delegado), la tabla vieja debe borrarse una vez antes de arrancar, en local y en RDS:
+
+```sql
+DROP TABLE IF EXISTS match;
+```
+
+En el broker también se puede borrar, desde la UI de administración, la cola `competencia.eventos` y su DLQ: competencia ya no consume eventos.
+
 #### 3. Servidor de desarrollo
 
 Con las variables exportadas:
@@ -175,32 +218,49 @@ La API queda disponible en `http://localhost:8082/`.
 ./mvnw verify
 ```
 
-Ejecuta las pruebas y genera `target/competition-0.0.1-SNAPSHOT.jar`. Las pruebas automatizadas usan dobles de repositorios, cliente REST y JWT; el test de contexto mantiene el consumidor detenido. No requieren RDS, RabbitMQ ni Entra reales y no sustituyen las pruebas de integración.
+Ejecuta las pruebas y genera `target/competition-0.0.1-SNAPSHOT.jar`. Las pruebas automatizadas usan dobles de repositorios, cliente REST, RabbitTemplate y JWT. No requieren RDS, RabbitMQ ni Entra reales y no sustituyen las pruebas de integración.
 
-### Prueba de Resultados
+### Prueba de la Copa
 
-Se necesita una competencia con ambos equipos inscritos, un partido creado desde `evento.creado` y un access token con rol `director`. Consultar el fixture para obtener los IDs reales.
+Con un token de rol `director`:
+
+1. `POST /api/admin/competitions` con `type: CUP`, el deporte fútbol y `competitionImg`. Devuelve `201`; `GET .../{id}/matches` muestra los 15 partidos vacíos.
+2. Inscribir 16 equipos con `POST .../{id}/teams` (el 17.º devuelve `409`).
+3. Sortear y programar los octavos con `PUT .../{id}/matches/{matchId}`:
 
 ```http
-PUT /api/admin/competitions/{id}/matches/{matchId}/result
+PUT /api/admin/competitions/{id}/matches/{matchId}
+Authorization: Bearer <access-token>
+Content-Type: application/json
+
+{
+  "date": "2026-11-08", "time": "18:00",
+  "location": "Santiago, Chile", "address": "Av. Grecia 2001",
+  "homeTeamId": 1, "awayTeamId": 2,
+  "delegateOid": "<oid-del-delegado>", "delegateDisplayName": "Delegado de prueba"
+}
+```
+
+4. `PATCH .../{id}/status` con `{ "status": "IN_PROGRESS" }`. Se publican los partidos completos (`partido.actualizado`).
+
+Con un token de rol `delegate` cuyo `oid` sea el del partido:
+
+```http
+POST /api/delegate/matches/{matchId}/start
+Authorization: Bearer <access-token>
+```
+
+```http
+PUT /api/delegate/matches/{matchId}/result
 Authorization: Bearer <access-token>
 Content-Type: application/json
 
 { "homeScore": 2, "awayScore": 1 }
 ```
 
-Devuelve `200`, `status: FINISHED`, `simulated: false` y una versión incrementada. Repetir con otro marcador corrige el resultado e incrementa nuevamente `version`. Se rechazan partidos cancelados y partidos ajenos a la competencia indicada.
+Devuelve `200`, `status: FINISHED` y una versión incrementada; el ganador aparece en el partido siguiente. Repetir con otro marcador corrige el resultado e incrementa nuevamente `version`. Un empate, un partido sin iniciar o cambiar el ganador cuando el partido siguiente ya comenzó devuelven `409`; otro delegado recibe `403`.
 
-Para simular otro partido todavía `SCHEDULED`, sin cuerpo:
-
-```http
-POST /api/admin/competitions/{id}/matches/{matchId}/simulate
-Authorization: Bearer <access-token>
-```
-
-Consulta el deporte en Instituciones: fútbol genera 0–5 y básquet 50–110 sin empates. Guarda `FINISHED`, `simulated: true` y publica el mismo tipo de mensaje. Otros deportes o partidos ya finalizados/cancelados devuelven `409`; Instituciones no disponible produce `503`.
-
-Para observar la publicación, crear una cola temporal `prueba.resultados` y vincularla a `athenet.topic` con routing key `resultado.registrado` antes de registrar o corregir el resultado. Inspeccionar su payload desde **Get messages**. Esta cola de diagnóstico no reemplaza las colas de los servicios.
+Para observar las publicaciones, crear una cola temporal `prueba.competencia` y vincularla a `athenet.topic` con las routing keys `partido.actualizado` y `resultado.registrado`. Inspeccionar su payload desde **Get messages**. Esta cola de diagnóstico no reemplaza las colas de los servicios.
 
 ### Despliegue
 
@@ -230,11 +290,11 @@ El despliegue reemplaza el contenedor existente y produce una breve interrupció
 src/main/java/com/athenet/competition/
 ├── client/       # Consultas a MS-Instituciones
 ├── config/       # Seguridad, CORS, RestClient y RabbitMQ
-├── controller/   # Endpoints públicos y administrativos
+├── controller/   # Endpoints públicos, administrativos y del delegado
 ├── dto/          # Requests y responses
 ├── exception/    # ApiError y manejo central de errores
 ├── mapper/       # Conversión entre entidades y DTO
-├── messaging/    # Listener, publicador y contratos JSON
+├── messaging/    # Publicadores y contratos JSON
 ├── model/        # Competition, Enrollment, Match y enums
 ├── repository/   # Repositorios Spring Data JPA
 └── service/      # Reglas de negocio
@@ -242,8 +302,7 @@ src/main/java/com/athenet/competition/
 
 ### Estado de Verificación
 
-* **Probado manualmente:** consumo de evento y creación de partido en RDS; autenticación de director; registro/corrección del resultado; publicación inspeccionada en RabbitMQ.
-* **Pruebas automatizadas:** reglas de negocio, simulación, seguridad HTTP, JSON publicado, consumo con header de clase ajena y reintentos/rechazo final.
-* **Pendiente en el entorno del equipo:** simulación con Instituciones disponible, consumo real por Ranking/Eventos, llegada a DLQ en el broker y despliegue EC2.
+* **Pruebas automatizadas:** llave de 15 partidos, sorteo de octavos, avance del ganador, correcciones, empates, delegado asignado, inicio y fin de la copa, seguridad HTTP por rol y JSON publicado (`partido.actualizado` y `resultado.registrado`).
+* **Pendiente en el entorno del equipo:** flujo completo con Eventos consumiendo `partido.actualizado`, consumo real por Ranking y despliegue EC2.
 
-La BD y RabbitMQ no comparten una transacción: publicar antes del commit deja una ventana de inconsistencia ante fallos. No se implementó outbox ni recuperación de publicaciones. El upsert tolera entregas repetidas, pero no compara versiones de agenda para descartar actualizaciones antiguas fuera de orden.
+La BD y RabbitMQ no comparten una transacción: publicar antes del commit deja una ventana de inconsistencia ante fallos. No se implementó outbox ni recuperación de publicaciones. Eventos hace upsert por `matchId`, así que tolera entregas repetidas.

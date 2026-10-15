@@ -21,6 +21,9 @@ import lombok.Setter;
 @Table(name = "competition")
 public class Competition {
 
+    // Equipos de una copa: la llave parte en octavos
+    public static final int CUP_TEAMS = 16;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -41,6 +44,10 @@ public class Competition {
 
     @Column(columnDefinition = "TEXT")
     private String description;
+
+    // URI de la imagen. Eventos la usa como portada de los partidos
+    @Column(name = "competition_img", length = 500)
+    private String competitionImg;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

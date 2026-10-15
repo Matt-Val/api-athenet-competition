@@ -19,13 +19,11 @@ class ResultEventPublisherTest {
         Match match = new Match();
         match.setId(31L);
         match.setCompetitionId(4L);
-        match.setEventId(57L);
         match.setVersion(2);
         match.setHomeTeamId(12L);
         match.setAwayTeamId(15L);
         match.setHomeScore(2);
         match.setAwayScore(1);
-        match.setSimulated(true);
         Competition competition = new Competition();
         competition.setSportId(1L);
         Enrollment home = new Enrollment();
@@ -46,7 +44,6 @@ class ResultEventPublisherTest {
         assertEquals(31, data.get("matchId").asLong());
         assertEquals(4, data.get("competitionId").asLong());
         assertEquals(1, data.get("sportId").asLong());
-        assertEquals(57, data.get("eventId").asLong());
         assertEquals(2, data.get("version").asInt());
         assertEquals(12, data.get("homeTeamId").asLong());
         assertEquals(15, data.get("awayTeamId").asLong());
@@ -54,7 +51,6 @@ class ResultEventPublisherTest {
         assertEquals(7, data.get("awayInstitutionId").asLong());
         assertEquals(2, data.get("homeScore").asInt());
         assertEquals(1, data.get("awayScore").asInt());
-        assertTrue(data.get("simulated").asBoolean());
         assertEquals(3, data.get("points").get("win").asInt());
         assertEquals(1, data.get("points").get("draw").asInt());
         assertEquals(0, data.get("points").get("loss").asInt());

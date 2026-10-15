@@ -8,15 +8,22 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import com.athenet.competition.model.Match;
+import com.athenet.competition.model.enums.MatchRound;
 
 public interface MatchRepository extends JpaRepository<Match, Long> {
 
     // Fixture completo de una competencia
     List<Match> findByCompetitionId(Long competitionId);
 
-    // Clave para el upsert por eventId al consumir evento.creado/evento.actualizado
-    // y para GET /api/public/partidos?eventId=(marcador en el detalle del evento).
-    Optional<Match> findByEventId(Long eventId);
+    List<Match> findByCompetitionIdAndRound(Long competitionId, MatchRound round);
+
+    // Partido siguiente de la llave, al que avanza el ganador
+    Optional<Match> findByCompetitionIdAndRoundAndPosition(Long competitionId, MatchRound round, int position);
+
+    // "Mis eventos" del delegado
+    List<Match> findByDelegateOid(String delegateOid);
+
+    void deleteByCompetitionId(Long competitionId);
 
     // Usado al desinscribir un equipo: DELETE .../equipos/{equipoId} solo se
     // permite si el equipo no tiene partidos en esa competencia.

@@ -21,6 +21,7 @@ public class CompetitionMapper {
         competition.setSportId(request.sportId());
         competition.setSeason(request.season());
         competition.setDescription(request.description());
+        competition.setCompetitionImg(request.competitionImg());
         competition.setStartDate(request.startDate());
         competition.setEndDate(request.endDate());
         // Defaults si no vienen en el request
@@ -38,6 +39,7 @@ public class CompetitionMapper {
                 competition.getSportId(),
                 competition.getSeason(),
                 competition.getDescription(),
+                competition.getCompetitionImg(),
                 competition.getStatus(),
                 competition.getStartDate(),
                 competition.getEndDate(),

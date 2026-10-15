@@ -2,8 +2,8 @@ package com.athenet.competition.controller;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.athenet.competition.dto.response.MatchResponse;
@@ -12,9 +12,10 @@ import com.athenet.competition.service.MatchService;
 
 import lombok.RequiredArgsConstructor;
 
-/* 
-    GET /api/public/matches?eventId= — lo usa el BFF para mostrar el marcador
-    en el detalle de un evento (§5.2), sin tener que pasar por competitionId.
+/*
+    GET /api/public/matches/{id} — marcador de un partido. La copia en Eventos guarda
+    el id del partido (competitionMatchId), así que un BFF puede mostrar el resultado
+    en el detalle del evento sin pasar por competitionId.
 */
 @RestController
 @RequestMapping("/api/public/matches")
@@ -24,13 +25,8 @@ public class PublicMatchController {
     private final MatchService matchService;
     private final MatchMapper matchMapper;
 
-    /* 
-        Devuelve el partido correspondiente al eventId. 
-        Nunca incluye borradores (DRAFT).
-        Solo incluye competencias activas y finalizadas.
-    */
-    @GetMapping
-    public ResponseEntity<MatchResponse> getByEventId(@RequestParam Long eventId) {
-        return ResponseEntity.ok(matchMapper.toResponse(matchService.getByEventIdOrThrow(eventId)));
+    @GetMapping("/{id}")
+    public ResponseEntity<MatchResponse> getById(@PathVariable Long id) {
+        return ResponseEntity.ok(matchMapper.toResponse(matchService.getById(id)));
     }
 }

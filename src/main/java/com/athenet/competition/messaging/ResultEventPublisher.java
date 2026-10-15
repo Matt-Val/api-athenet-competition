@@ -14,8 +14,8 @@ import com.athenet.competition.model.Match;
 import lombok.RequiredArgsConstructor;
 
 /* 
-    Publica resultado.registrado cada vez que MatchService.registerResult
-    guarda un resultado nuevo o una corrección.
+    Publica resultado.registrado cada vez que el delegado guarda un resultado
+    nuevo o una corrección (MatchService.registerResult).
 */
 @Component
 @RequiredArgsConstructor
@@ -28,7 +28,6 @@ public class ResultEventPublisher {
                 match.getId(),
                 match.getCompetitionId(),
                 competition.getSportId(),
-                match.getEventId(),
                 match.getVersion(),
                 match.getHomeTeamId(),
                 match.getAwayTeamId(),
@@ -36,7 +35,6 @@ public class ResultEventPublisher {
                 away.getInstitutionId(),
                 match.getHomeScore(),
                 match.getAwayScore(),
-                match.isSimulated(),
                 new ResultRegisteredMessage.Points(
                         competition.getWinPoints(), competition.getDrawPoints(), competition.getLossPoints()));
 
