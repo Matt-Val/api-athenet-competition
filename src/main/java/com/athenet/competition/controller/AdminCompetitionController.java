@@ -19,7 +19,8 @@ import lombok.RequiredArgsConstructor;
     Rol Director. La seguridad real (JWT + ROLE_DIRECTOR) ya está conectada
     en SecurityConfig.
 
-    Los resultados y las simulaciones comprueban la pertenencia del partido.
+    La edición de partidos comprueba su pertenencia a la competencia. Los resultados
+    no pasan por acá: los carga el delegado (DelegateMatchController).
 */
 @RestController
 @RequestMapping("/api/admin/competitions")
@@ -46,8 +47,14 @@ public class AdminCompetitionController {
         return ResponseEntity.ok(response);
     }
 
-    /* 
-        Crear, actualizar, cambiar estado y eliminar competencias. 
+    // Detalle en cualquier estado, incluido DRAFT
+    @GetMapping("/{id}")
+    public ResponseEntity<CompetitionResponse> getById(@PathVariable Long id) {
+        return ResponseEntity.ok(competitionMapper.toResponse(competitionService.getById(id)));
+    }
+
+    /*
+        Crear, actualizar, cambiar estado y eliminar competencias.
         El create/update devuelve 201/200 con el recurso creado/actualizado.
     */
     @PostMapping
@@ -72,7 +79,7 @@ public class AdminCompetitionController {
     /*
         Cambiar estado de la competencia: el request body es solo el nuevo estado.
         El cambio de estado puede implicar acciones adicionales (ej: al pasar a
-        "en curso" se generan los partidos).
+        "en curso" se publican los partidos en Eventos).
     */
 
     @PatchMapping("/{id}/status")
@@ -94,8 +101,17 @@ public class AdminCompetitionController {
         return ResponseEntity.noContent().build();
     }
 
-    /* 
-        Inscribir y desinscribir equipos en la competencia. 
+    // Nómina de la competencia: el director sortea los octavos desde aquí
+    @GetMapping("/{id}/teams")
+    public ResponseEntity<List<EnrollmentResponse>> listTeams(@PathVariable Long id) {
+        List<EnrollmentResponse> response = enrollmentService.listByCompetition(id).stream()
+                .map(enrollmentMapper::toResponse)
+                .toList();
+        return ResponseEntity.ok(response);
+    }
+
+    /*
+        Inscribir y desinscribir equipos en la competencia.
         El enroll devuelve 201 con el recurso creado, el unenroll devuelve 204.
     */
     @PostMapping("/{id}/teams")
@@ -116,24 +132,26 @@ public class AdminCompetitionController {
         return ResponseEntity.noContent().build();
     }
 
-    /* 
-        Registrar resultado de un partido y simular un partido. 
-        Ambos devuelven 200 con el recurso actualizado.
+    /*
+        Llave de la copa, ordenada por ronda y posición. Incluye borradores.
     */
-    @PutMapping("/{id}/matches/{matchId}/result")
-    public ResponseEntity<MatchResponse> registerResult(@PathVariable Long id, @PathVariable Long matchId,
-            @Valid @RequestBody MatchResultRequest request) {
-        MatchResponse updated = matchMapper.toResponse(
-                matchService.registerResult(id, matchId, request.homeScore(), request.awayScore()));
-        return ResponseEntity.ok(updated);
+    @GetMapping("/{id}/matches")
+    public ResponseEntity<List<MatchResponse>> listMatches(@PathVariable Long id) {
+        List<MatchResponse> response = matchService.listByCompetition(id).stream()
+                .map(matchMapper::toResponse)
+                .toList();
+        return ResponseEntity.ok(response);
     }
 
-    /* 
-        Simular un partido: devuelve 200 con el recurso actualizado. 
-        La simulación puede implicar acciones adicionales (ej: actualizar tabla de posiciones).
+    /*
+        Programar un partido (fecha, hora, lugar, delegado) y sortear los equipos de octavos.
+        El resultado no se toca acá: solo lo carga el delegado asignado.
     */
-    @PostMapping("/{id}/matches/{matchId}/simulate")
-    public ResponseEntity<MatchResponse> simulate(@PathVariable Long id, @PathVariable Long matchId) {
-        return ResponseEntity.ok(matchMapper.toResponse(matchService.simulate(id, matchId)));
+    @PutMapping("/{id}/matches/{matchId}")
+    public ResponseEntity<MatchResponse> updateMatch(@PathVariable Long id, @PathVariable Long matchId,
+            @Valid @RequestBody MatchUpdateRequest request) {
+        MatchResponse updated = matchMapper.toResponse(
+                matchService.updateMatch(id, matchId, matchMapper.toEntity(request)));
+        return ResponseEntity.ok(updated);
     }
 }

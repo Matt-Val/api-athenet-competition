@@ -11,6 +11,7 @@ import com.athenet.competition.exception.ConflictException;
 import com.athenet.competition.exception.ResourceNotFoundException;
 import com.athenet.competition.model.Competition;
 import com.athenet.competition.model.Enrollment;
+import com.athenet.competition.model.enums.CompetitionType;
 import com.athenet.competition.repository.CompetitionRepository;
 import com.athenet.competition.repository.EnrollmentRepository;
 import com.athenet.competition.repository.MatchRepository;
@@ -40,6 +41,11 @@ public class EnrollmentService {
 
         if (enrollmentRepository.existsByCompetitionIdAndTeamId(competitionId, teamId)) {
             throw new ConflictException("El equipo " + teamId + " ya está inscrito en esta competencia");
+        }
+
+        if (competition.getType() == CompetitionType.CUP
+                && enrollmentRepository.countByCompetitionId(competitionId) >= Competition.CUP_TEAMS) {
+            throw new ConflictException("La copa ya tiene sus " + Competition.CUP_TEAMS + " equipos inscritos");
         }
 
         TeamInfo team = institutionClient.getActiveTeam(teamId);

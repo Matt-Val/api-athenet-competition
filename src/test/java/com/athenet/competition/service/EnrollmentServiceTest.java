@@ -8,6 +8,7 @@ import org.mockito.ArgumentCaptor;
 import com.athenet.competition.client.*;
 import com.athenet.competition.exception.ConflictException;
 import com.athenet.competition.model.*;
+import com.athenet.competition.model.enums.CompetitionType;
 import com.athenet.competition.repository.*;
 
 class EnrollmentServiceTest {
@@ -45,6 +46,17 @@ class EnrollmentServiceTest {
         competition();
         when(institutions.getActiveTeam(12L)).thenReturn(new TeamInfo(12L, "Equipo", null, 2L, 3L, "Institución"));
         assertThrows(ConflictException.class, () -> service.enroll(4L, 12L));
+        verify(enrollments, never()).save(any());
+    }
+
+    @Test void cupAcceptsSixteenTeamsAtMost() {
+        Competition cup = new Competition();
+        cup.setSportId(1L);
+        cup.setType(CompetitionType.CUP);
+        when(competitions.findById(4L)).thenReturn(Optional.of(cup));
+        when(enrollments.countByCompetitionId(4L)).thenReturn(16L);
+        assertThrows(ConflictException.class, () -> service.enroll(4L, 12L));
+        verifyNoInteractions(institutions);
         verify(enrollments, never()).save(any());
     }
 

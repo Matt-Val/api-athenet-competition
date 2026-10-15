@@ -3,6 +3,7 @@ package com.athenet.competition.model;
 import java.time.LocalDate;
 import java.time.LocalTime;
 
+import com.athenet.competition.model.enums.MatchRound;
 import com.athenet.competition.model.enums.MatchStatus;
 
 import jakarta.persistence.*;
@@ -13,10 +14,10 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-/* 
-    Un partido es un Event con type=MATCH en MS-Eventos. Este registro es la copia que usa 
-    Competencia para fixture y resultado. 
-    EventId es único: al consumir evento.creado/evento.actualizado se hace upsert por eventId
+/*
+    Encuentro de la llave de una copa. Competencia es su dueña: los partidos se crean
+    vacíos junto con la copa, el director los programa y el delegado asignado carga el
+    resultado. MS-Eventos recibe una copia (partido.actualizado) cuando el partido está completo.
 */
 @Getter
 @Setter
@@ -24,10 +25,9 @@ import lombok.Setter;
 @AllArgsConstructor
 @EqualsAndHashCode(of = "id")
 @Entity
-@Table(name = "match")
+@Table(name = "match", uniqueConstraints = @UniqueConstraint(columnNames = {"competition_id", "round", "position"}))
 public class Match {
 
-    // Id de la tabla, no confundir con eventId
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -35,23 +35,36 @@ public class Match {
     @Column(name = "competition_id", nullable = false)
     private Long competitionId;
 
-    @Column(name = "event_id", nullable = false, unique = true)
-    private Long eventId;
-
-    @Column(name = "event_internal_id", nullable = false, unique = true, length = 50)
-    private String eventInternalId;
-
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
+    private MatchRound round;
+
+    // 1..N dentro de la ronda
+    @Column(nullable = false)
+    private int position;
+
     private LocalDate date;
 
-    // Opcional, igual que startTime en Eventos: hora en America/Santiago.
+    // Hora en America/Santiago, igual que startTime en Eventos.
     private LocalTime time;
- 
-    @Column(name = "home_team_id", nullable = false)
+
+    private String location;
+
+    private String address;
+
+    // Null hasta el sorteo (octavos) o hasta que gane el partido anterior
+    @Column(name = "home_team_id")
     private Long homeTeamId;
 
-    @Column(name = "away_team_id", nullable = false)
+    @Column(name = "away_team_id")
     private Long awayTeamId;
+
+    // Delegado (Entra ID): el único que puede iniciar el partido y cargar o corregir su resultado
+    @Column(name = "delegate_oid", length = 36)
+    private String delegateOid;
+
+    @Column(name = "delegate_display_name", length = 256)
+    private String delegateDisplayName;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -63,11 +76,13 @@ public class Match {
     @Column(name = "away_score")
     private Integer awayScore;
 
-    @Column(nullable = false)
-    private boolean simulated = false;
-
     // Idempotencia para MS-Ranking: solo procesa el mensaje si version es
     // mayor que la guardada. Sube en cada corrección de resultado.
     @Column(nullable = false)
     private int version = 0;
+
+    // Completo: se puede jugar y publicar en Eventos
+    public boolean isComplete() {
+        return homeTeamId != null && awayTeamId != null && date != null && time != null && delegateOid != null;
+    }
 }
