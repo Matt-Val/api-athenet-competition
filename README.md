@@ -117,7 +117,7 @@ El exchange es `athenet.topic`. `partido.actualizado` se publica cada vez que se
 }
 ```
 
-El resultado se publica cada vez que el delegado finaliza o corrige un partido:
+El resultado se publica cada vez que el delegado finaliza o corrige un partido. `version` es 1 al finalizar y sube en cada corrección: el consumidor procesa el mensaje solo si su `version` es mayor que la última guardada para ese `matchId`. Los nombres y la ronda van listos para mostrar:
 
 ```json
 {
@@ -125,9 +125,12 @@ El resultado se publica cada vez que el delegado finaliza o corrige un partido:
   "occurredAt": "2026-10-12T21:00:00Z",
   "type": "resultado.registrado",
   "data": {
-    "matchId": 1, "competitionId": 1, "sportId": 1,
+    "matchId": 1, "competitionId": 1,
+    "competitionName": "Copa Instituciones de Chile 2026",
+    "sportId": 1, "round": "Cuartos de final",
     "version": 1,
     "homeTeamId": 1, "awayTeamId": 2,
+    "homeTeamName": "Halcones", "awayTeamName": "Pumas",
     "homeInstitutionId": 3, "awayInstitutionId": 7,
     "homeScore": 2, "awayScore": 1,
     "points": { "win": 3, "draw": 1, "loss": 0 }
@@ -302,7 +305,7 @@ src/main/java/com/athenet/competition/
 
 ### Estado de Verificación
 
-* **Pruebas automatizadas:** llave de 15 partidos, sorteo de octavos, avance del ganador, correcciones, empates, delegado asignado, inicio y fin de la copa, seguridad HTTP por rol y JSON publicado (`partido.actualizado` y `resultado.registrado`).
+* **Pruebas automatizadas:** llave de 15 partidos, sorteo de octavos, avance del ganador, correcciones, empates, delegado asignado, inicio y fin de la copa, seguridad HTTP por rol, JSON publicado (`partido.actualizado` y `resultado.registrado`) y envío después del commit.
 * **Pendiente en el entorno del equipo:** flujo completo con Eventos consumiendo `partido.actualizado`, consumo real por Ranking y despliegue EC2.
 
-La BD y RabbitMQ no comparten una transacción: publicar antes del commit deja una ventana de inconsistencia ante fallos. No se implementó outbox ni recuperación de publicaciones. Eventos hace upsert por `matchId`, así que tolera entregas repetidas.
+La BD y RabbitMQ no comparten una transacción: los mensajes se envían después del commit, así que un cambio revertido nunca se publica. Si el broker falla después del commit, el cambio queda guardado, el error se registra en el log y el mensaje se pierde. No se implementó outbox ni recuperación de publicaciones; una copia desactualizada en Eventos se corrige volviendo a publicar (editar la competencia republica sus partidos). Eventos hace upsert por `matchId`, así que tolera entregas repetidas.

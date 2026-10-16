@@ -3,7 +3,6 @@ package com.athenet.competition.messaging;
 import java.time.Instant;
 import java.util.UUID;
 
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Component;
 
 import com.athenet.competition.config.RabbitConfig;
@@ -21,16 +20,20 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class ResultEventPublisher {
 
-    private final RabbitTemplate rabbitTemplate;
+    private final AfterCommitSender sender;
 
     public void publish(Match match, Competition competition, Enrollment home, Enrollment away) {
         ResultRegisteredMessage data = new ResultRegisteredMessage(
                 match.getId(),
                 match.getCompetitionId(),
+                competition.getName(),
                 competition.getSportId(),
+                match.getRound().getLabel(),
                 match.getVersion(),
                 match.getHomeTeamId(),
                 match.getAwayTeamId(),
+                home.getTeamName(),
+                away.getTeamName(),
                 home.getInstitutionId(),
                 away.getInstitutionId(),
                 match.getHomeScore(),
@@ -44,6 +47,6 @@ public class ResultEventPublisher {
                 RabbitConfig.RESULT_REGISTERED_ROUTING_KEY,
                 data);
 
-        rabbitTemplate.convertAndSend(RabbitConfig.EXCHANGE, RabbitConfig.RESULT_REGISTERED_ROUTING_KEY, envelope);
+        sender.send(RabbitConfig.RESULT_REGISTERED_ROUTING_KEY, envelope);
     }
 }

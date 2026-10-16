@@ -42,7 +42,7 @@ class MatchUpdatedPublisherTest {
         Enrollment away = new Enrollment();
         away.setTeamName("Pumas");
 
-        new MatchUpdatedPublisher(template).publish(match, competition, home, away);
+        new MatchUpdatedPublisher(new AfterCommitSender(template)).publish(match, competition, home, away);
 
         var captor = ArgumentCaptor.forClass(MatchUpdatedEnvelope.class);
         verify(template).convertAndSend(eq(RabbitConfig.EXCHANGE),
