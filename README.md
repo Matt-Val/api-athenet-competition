@@ -39,17 +39,19 @@ Microservicio de competencias de <strong>Athenet</strong>: administra competenci
 
 Competencia es la dueña de los encuentros y la fuente de verdad de los resultados. Por ahora solo hay copas (`CUP`) de 16 equipos: al crear la copa se genera su llave vacía de 15 partidos (8vos, 4tos, semis y final). El director sortea los octavos y programa cada partido; el delegado asignado lo inicia y carga el resultado final. Los datos de equipos y deportes se consultan mediante endpoints GET de MS-Instituciones; cada servicio mantiene su propia base de datos.
 
-* **Pública (`/api/public/**`):** consulta de competencias, nómina, llave y marcador de un partido, sin autenticación. El listado de competencias excluye `DRAFT`.
+* **Pública (`/api/public/**`):** consulta de competencias, nómina, llave, marcador de un partido y perfil de un equipo (sus competencias y últimos partidos), sin autenticación. El listado de competencias y el perfil del equipo excluyen `DRAFT`.
 * **Administrativa (`/api/admin/competitions/**`):** gestión de competencias, equipos y programación de partidos, reservada al rol `DIRECTOR`.
 * **Delegado (`/api/delegate/matches/**`):** iniciar, finalizar y corregir los partidos asignados, reservada al rol `DELEGATE`.
 
 | Método | Endpoint | Acceso | Descripción |
 | :--- | :--- | :--- | :--- |
 | `GET` | `/api/public/competitions?sportId&status` | Público | Listado sin borradores, con filtros opcionales |
+| `GET` | `/api/public/competitions?teamId&sportId&status&limit` | Público | Competencias del equipo con su desempeño (`teamProgress`) |
 | `GET` | `/api/public/competitions/{id}` | Público | Detalle de competencia |
 | `GET` | `/api/public/competitions/{id}/teams` | Público | Nómina de equipos |
 | `GET` | `/api/public/competitions/{id}/matches` | Público | Llave y resultados |
 | `GET` | `/api/public/matches/{id}` | Público | Partido por ID (Eventos lo guarda como `competitionMatchId`) |
+| `GET` | `/api/public/matches?teamId&status&limit` | Público | Últimos partidos del equipo, con nombre y logo de ambos equipos |
 | `GET` | `/api/admin/competitions?sportId` | `DIRECTOR` | Listado que incluye borradores |
 | `GET` | `/api/admin/competitions/{id}` | `DIRECTOR` | Detalle en cualquier estado |
 | `POST` | `/api/admin/competitions` | `DIRECTOR` | Crear copa, validar el deporte y generar la llave |
@@ -73,6 +75,13 @@ No se permite cambiar el tipo, ni el deporte si hay equipos inscritos. Las inscr
 * **Programación:** el director edita fecha, hora, lugar y delegado mientras el partido no comience. Un partido es "completo" con ambos equipos, fecha, hora y delegado. Con la copa en curso, un partido completo no puede quedar incompleto.
 * **Inicio de la copa:** `DRAFT` → `IN_PROGRESS` exige 16 equipos inscritos y los octavos sorteados. La copa pasa sola a `FINISHED` al registrar el resultado de la final.
 * **Resultados:** solo el delegado asignado (claim `oid` del token igual a `delegateOid` del partido) inicia y finaliza el partido. No hay empates. Una corrección que cambia al ganador solo se acepta si el partido siguiente no ha comenzado; el director nunca registra ni corrige resultados.
+
+#### Perfil del equipo
+
+Ambas lecturas salen de la base de Competencia (los nombres y logos son la copia guardada al inscribir), sin llamar a Instituciones. `limit` vale 5 por defecto y acepta de 1 a 20; un `teamId` sin inscripciones devuelve `[]`.
+
+* **Competencias del equipo:** los mismos campos del listado, las más recientes primero, más `teamProgress`: ronda más lejana (`round`), `outcome` (`ACTIVE`, `ELIMINATED` o `CHAMPION`) y partidos terminados (`played`, `won`, `lost`).
+* **Últimos partidos:** `teamId` es obligatorio. Del más reciente al más antiguo, con la competencia (`id`, `name`, `season`, `competitionImg`) y cada lado como `{ teamId, name, logoUrl, score }`; `score` es `null` hasta que el partido termina y un lado es `null` si aún no tiene equipo. No incluye datos del delegado.
 
 ### Control de Acceso y Roles
 

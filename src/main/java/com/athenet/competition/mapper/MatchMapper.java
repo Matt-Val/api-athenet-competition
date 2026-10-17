@@ -4,6 +4,11 @@ import org.springframework.stereotype.Component;
 
 import com.athenet.competition.dto.request.MatchUpdateRequest;
 import com.athenet.competition.dto.response.MatchResponse;
+import com.athenet.competition.dto.response.TeamMatchResponse;
+import com.athenet.competition.dto.response.TeamMatchResponse.CompetitionSummary;
+import com.athenet.competition.dto.response.TeamMatchResponse.TeamScore;
+import com.athenet.competition.model.Competition;
+import com.athenet.competition.model.Enrollment;
 import com.athenet.competition.model.Match;
 
 @Component
@@ -42,5 +47,25 @@ public class MatchMapper {
                 match.getAwayScore(),
                 match.getVersion()
         );
+    }
+
+    public TeamMatchResponse toTeamResponse(Match match, Competition competition, Enrollment home, Enrollment away) {
+        return new TeamMatchResponse(
+                match.getId(),
+                new CompetitionSummary(competition.getId(), competition.getName(),
+                        competition.getSeason(), competition.getCompetitionImg()),
+                match.getRound(),
+                match.getDate(),
+                match.getTime(),
+                match.getLocation(),
+                match.getAddress(),
+                match.getStatus(),
+                teamScore(home, match.getHomeScore()),
+                teamScore(away, match.getAwayScore())
+        );
+    }
+
+    private static TeamScore teamScore(Enrollment team, Integer score) {
+        return team == null ? null : new TeamScore(team.getTeamId(), team.getTeamName(), team.getTeamLogoUrl(), score);
     }
 }

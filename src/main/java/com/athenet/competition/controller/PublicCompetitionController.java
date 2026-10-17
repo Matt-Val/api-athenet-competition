@@ -11,6 +11,8 @@ import com.athenet.competition.mapper.*;
 import com.athenet.competition.service.*;
 import com.athenet.competition.model.enums.CompetitionStatus;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 
 // Lecturas públicas, sin token. Las consume bff-public y para validaciones, MS-Eventos.
@@ -42,8 +44,24 @@ public class PublicCompetitionController {
         return ResponseEntity.ok(response);
     }
 
-    /* 
-        Devuelve la competencia, sus equipos y sus partidos. 
+    /*
+        Con teamId: las competencias del equipo, las más recientes primero, y cómo le fue
+        en cada una (teamProgress). Nunca incluye borradores (DRAFT).
+    */
+    @GetMapping(params = "teamId")
+    public ResponseEntity<List<TeamCompetitionResponse>> listByTeam(
+            @RequestParam Long teamId,
+            @RequestParam(required = false) Long sportId,
+            @RequestParam(required = false) CompetitionStatus status,
+            @RequestParam(defaultValue = "5") @Min(1) @Max(20) int limit) {
+        List<TeamCompetitionResponse> response = competitionService.listForTeam(teamId, sportId, status, limit).stream()
+                .map(team -> competitionMapper.toTeamResponse(team.competition(), team.progress()))
+                .toList();
+        return ResponseEntity.ok(response);
+    }
+
+    /*
+        Devuelve la competencia, sus equipos y sus partidos.
         Nunca incluye borradores (DRAFT).
         Solo incluye competencias activas y finalizadas.
     */

@@ -7,6 +7,7 @@ import static org.mockito.Mockito.*;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -279,5 +280,59 @@ class MatchServiceTest {
         when(matches.findByDelegateOid(DELEGATE)).thenReturn(List.of(match, hidden));
         when(competitions.findAllById(any())).thenReturn(List.of(competition, draft));
         assertEquals(List.of(match), service.listForDelegate(DELEGATE));
+    }
+
+    @Test
+    void teamSeesItsLatestMatchesWithBothTeams() {
+        Competition draft = new Competition();
+        draft.setId(5L);
+        Match hidden = match(60L, MatchRound.ROUND_OF_16, 1, 12L, 31L);
+        hidden.setCompetitionId(5L);
+        next.setHomeTeamId(12L);
+        next.setDate(LocalDate.of(2026, 11, 15));
+        home.setId(1L);
+        home.setCompetitionId(4L);
+        home.setTeamId(12L);
+        away.setId(2L);
+        away.setCompetitionId(4L);
+        away.setTeamId(15L);
+        when(matches.findByTeamId(12L)).thenReturn(List.of(match, hidden, next));
+        when(competitions.findAllById(any())).thenReturn(List.of(competition, draft));
+        when(enrollments.findByCompetitionIdIn(any())).thenReturn(List.of(home, away));
+
+        List<MatchService.TeamMatch> latest = service.listForTeam(12L, null, 5);
+        assertEquals(List.of(next, match), latest.stream().map(MatchService.TeamMatch::match).toList());
+        assertNull(latest.get(0).away());
+        assertEquals(new MatchService.TeamMatch(match, competition, home, away), latest.get(1));
+
+        assertEquals(List.of(next), service.listForTeam(12L, null, 1).stream().map(MatchService.TeamMatch::match).toList());
+        assertEquals(List.of(match), service.listForTeam(12L, MatchStatus.IN_PROGRESS, 5).stream()
+                .map(MatchService.TeamMatch::match).toList());
+    }
+
+    @Test
+    void progressShowsHowFarTheTeamWentInEachCompetition() {
+        match.setStatus(MatchStatus.FINISHED);
+        match.setHomeScore(2);
+        match.setAwayScore(1);
+        next.setHomeTeamId(12L);
+        Match lostQuarter = finished(70L, 6L, MatchRound.QUARTER_FINAL, 20L, 12L, 3, 0);
+        Match wonFinal = finished(80L, 7L, MatchRound.FINAL, 12L, 21L, 1, 0);
+        when(matches.findByTeamId(12L)).thenReturn(List.of(match, next, lostQuarter, wonFinal));
+
+        Map<Long, TeamProgress> progress = service.progressByCompetition(12L);
+        assertEquals(new TeamProgress(MatchRound.QUARTER_FINAL, TeamOutcome.ACTIVE, 1, 1, 0), progress.get(4L));
+        assertEquals(new TeamProgress(MatchRound.QUARTER_FINAL, TeamOutcome.ELIMINATED, 1, 0, 1), progress.get(6L));
+        assertEquals(new TeamProgress(MatchRound.FINAL, TeamOutcome.CHAMPION, 1, 1, 0), progress.get(7L));
+    }
+
+    static Match finished(Long id, Long competitionId, MatchRound round, Long homeTeamId, Long awayTeamId,
+            int homeScore, int awayScore) {
+        Match finished = match(id, round, 1, homeTeamId, awayTeamId);
+        finished.setCompetitionId(competitionId);
+        finished.setStatus(MatchStatus.FINISHED);
+        finished.setHomeScore(homeScore);
+        finished.setAwayScore(awayScore);
+        return finished;
     }
 }
