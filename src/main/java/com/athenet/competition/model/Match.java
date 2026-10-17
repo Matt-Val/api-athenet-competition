@@ -17,7 +17,7 @@ import lombok.Setter;
 /*
     Encuentro de la llave de una copa. Competencia es su dueña: los partidos se crean
     vacíos junto con la copa, el director los programa y el delegado asignado carga el
-    resultado. MS-Eventos recibe una copia (partido.actualizado) cuando el partido está completo.
+    resultado.
 */
 @Getter
 @Setter
@@ -76,12 +76,12 @@ public class Match {
     @Column(name = "away_score")
     private Integer awayScore;
 
-    // Idempotencia para MS-Ranking: solo procesa el mensaje si version es
+    // Idempotencia para el consumidor de resultado.registrado: solo procesa el mensaje si version es
     // mayor que la guardada. Sube en cada corrección de resultado.
     @Column(nullable = false)
     private int version = 0;
 
-    // Completo: se puede jugar y publicar en Eventos
+    // Completo: se puede jugar
     public boolean isComplete() {
         return homeTeamId != null && awayTeamId != null && date != null && time != null && delegateOid != null;
     }

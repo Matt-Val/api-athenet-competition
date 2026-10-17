@@ -112,7 +112,7 @@ class CompetitionServiceTest {
         verify(repository, never()).save(any());
     }
 
-    @Test void updatingStartedCupRepublishesItsMatches() {
+    @Test void startedCupCanBeUpdated() {
         Competition competition = existing();
         competition.setType(CompetitionType.CUP);
         competition.setStatus(CompetitionStatus.IN_PROGRESS);
@@ -121,7 +121,6 @@ class CompetitionServiceTest {
         changes.setCompetitionImg("https://ejemplo.com/copa.png");
         service.update(4L, changes);
         assertEquals("https://ejemplo.com/copa.png", competition.getCompetitionImg());
-        verify(matchService).publishSchedule(competition);
     }
 
     @Test void onlyForwardStatusTransitionsAreAccepted() {
@@ -148,7 +147,6 @@ class CompetitionServiceTest {
         when(matchService.isDrawComplete(4L)).thenReturn(true);
         service.changeStatus(4L, CompetitionStatus.IN_PROGRESS);
         assertEquals(CompetitionStatus.IN_PROGRESS, competition.getStatus());
-        verify(matchService).publishSchedule(competition);
 
         // La copa termina sola con la final
         assertThrows(ConflictException.class, () -> service.changeStatus(4L, CompetitionStatus.FINISHED));

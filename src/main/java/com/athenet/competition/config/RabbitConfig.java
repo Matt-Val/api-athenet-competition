@@ -16,7 +16,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
     el profesor en el repo cloud_rabbit (RabbitConfig con @Bean por Exchange,
     Jackson2JsonMessageConverter con trusted packages) - adaptado a lo que si pide
     Athenet: un solo TopicExchange compartido entre los microservicios.
-    Competencia solo publica: cada consumidor (Eventos, Ranking) declara su propia
+    Competencia solo publica: cada consumidor (Notificaciones) declara su propia
     cola, binding y DLQ.
 */
 @Configuration
@@ -25,8 +25,6 @@ public class RabbitConfig {
     public static final String EXCHANGE = "athenet.topic";
 
     public static final String RESULT_REGISTERED_ROUTING_KEY = "resultado.registrado";
-
-    public static final String MATCH_UPDATED_ROUTING_KEY = "partido.actualizado";
 
     /*
         ObjectMapper Jackson 2.x para el converter de abajo: nada de depender de

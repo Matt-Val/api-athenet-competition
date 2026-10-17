@@ -49,9 +49,9 @@ class AfterCommitSenderTest {
 
     @Test
     void sendsRightAwayWithoutTransaction() {
-        sender.send("partido.actualizado", "envelope");
+        sender.send("resultado.registrado", "envelope");
 
-        verify(template).convertAndSend(RabbitConfig.EXCHANGE, "partido.actualizado", "envelope");
+        verify(template).convertAndSend(RabbitConfig.EXCHANGE, "resultado.registrado", "envelope");
     }
 
     @Test

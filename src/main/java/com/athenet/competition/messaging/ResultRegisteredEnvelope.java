@@ -1,7 +1,7 @@
 package com.athenet.competition.messaging;
 
 /*
-    Sobre resultado.registrado. Concreto ya que Ranking y Eventos deberían copiar este mismo patrón
+    Sobre resultado.registrado. Concreto ya que Notificaciones debería copiar este mismo patrón
     (record contreto, no MessageEnvelope genérico) cuando armen su propio listener para este mensaje.
 */
 public record ResultRegisteredEnvelope(

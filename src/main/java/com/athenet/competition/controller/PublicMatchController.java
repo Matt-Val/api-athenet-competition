@@ -20,9 +20,7 @@ import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 
 /*
-    GET /api/public/matches/{id} — marcador de un partido. La copia en Eventos guarda
-    el id del partido (competitionMatchId), así que un BFF puede mostrar el resultado
-    en el detalle del evento sin pasar por competitionId.
+    GET /api/public/matches/{id} — marcador de un partido.
 */
 @RestController
 @RequestMapping("/api/public/matches")

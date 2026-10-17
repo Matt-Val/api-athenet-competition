@@ -78,8 +78,6 @@ public class AdminCompetitionController {
     
     /*
         Cambiar estado de la competencia: el request body es solo el nuevo estado.
-        El cambio de estado puede implicar acciones adicionales (ej: al pasar a
-        "en curso" se publican los partidos en Eventos).
     */
 
     @PatchMapping("/{id}/status")

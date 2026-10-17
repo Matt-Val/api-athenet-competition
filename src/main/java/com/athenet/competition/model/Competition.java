@@ -45,7 +45,7 @@ public class Competition {
     @Column(columnDefinition = "TEXT")
     private String description;
 
-    // URI de la imagen. Eventos la usa como portada de los partidos
+    // URI de la imagen
     @Column(name = "competition_img", length = 500)
     private String competitionImg;
 

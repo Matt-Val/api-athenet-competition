@@ -16,7 +16,6 @@ import org.springframework.transaction.annotation.Transactional;
 import com.athenet.competition.exception.ConflictException;
 import com.athenet.competition.exception.ForbiddenException;
 import com.athenet.competition.exception.ResourceNotFoundException;
-import com.athenet.competition.messaging.MatchUpdatedPublisher;
 import com.athenet.competition.messaging.ResultEventPublisher;
 import com.athenet.competition.model.Competition;
 import com.athenet.competition.model.Enrollment;
@@ -50,7 +49,6 @@ public class MatchService {
     private final CompetitionRepository competitionRepository;
     private final EnrollmentRepository enrollmentRepository;
     private final ResultEventPublisher resultEventPublisher;
-    private final MatchUpdatedPublisher matchUpdatedPublisher;
 
     public Match getById(Long id) {
         return findEntityById(id);
@@ -143,12 +141,6 @@ public class MatchService {
                 && roundOf16.stream().allMatch(match -> match.getHomeTeamId() != null && match.getAwayTeamId() != null);
     }
 
-    // Al iniciar la copa o editarla: (re)publica en Eventos todos sus partidos completos
-    public void publishSchedule(Competition competition) {
-        matchRepository.findByCompetitionId(competition.getId())
-                .forEach(match -> publishIfReady(match, competition));
-    }
-
     /*
         PUT .../matches/{matchId}: el director programa el partido (fecha, hora, lugar, delegado).
         Los equipos solo se eligen en octavos y con la copa en DRAFT (el sorteo); en las demás
@@ -173,7 +165,6 @@ public class MatchService {
         if (teamsChanged) {
             validateDraw(competition, match, changes.getHomeTeamId(), changes.getAwayTeamId());
         }
-        boolean published = isPublishable(match, competition);
 
         match.setDate(changes.getDate());
         match.setTime(changes.getTime());
@@ -183,15 +174,7 @@ public class MatchService {
         match.setAwayTeamId(changes.getAwayTeamId());
         match.setDelegateOid(changes.getDelegateOid());
         match.setDelegateDisplayName(changes.getDelegateDisplayName());
-
-        // Su copia ya está en Eventos: no puede quedar sin equipos, fecha, hora ni delegado
-        if (published && !match.isComplete()) {
-            throw new ConflictException("Un partido publicado debe mantener equipos, fecha, hora y delegado");
-        }
-
-        Match saved = matchRepository.save(match);
-        publishIfReady(saved, competition);
-        return saved;
+        return matchRepository.save(match);
     }
 
     // POST /api/delegate/matches/{id}/start: puede ser antes de la hora programada
@@ -217,7 +200,7 @@ public class MatchService {
     /*
         PUT /api/delegate/matches/{id}/result: resultado final del delegado asignado. Si el partido
         está en juego lo finaliza y el ganador avanza en la llave; si ya terminó es una corrección
-        y version sube igual. Siempre publica resultado.registrado (§7) para Ranking.
+        y version sube igual. Siempre publica resultado.registrado (§7) para Notificaciones.
     */
     @Transactional
     public Match registerResult(Long matchId, String delegateOid, int homeScore, int awayScore) {
@@ -276,7 +259,7 @@ public class MatchService {
         } else {
             next.setAwayTeamId(winner);
         }
-        publishIfReady(matchRepository.save(next), competition);
+        matchRepository.save(next);
     }
 
     private void validateDraw(Competition competition, Match match, Long homeTeamId, Long awayTeamId) {
@@ -302,20 +285,6 @@ public class MatchService {
                 throw new ConflictException("El equipo " + teamId + " ya está en otro partido de octavos");
             }
         }
-    }
-
-    // Copia para Eventos: solo partidos completos de competencias que ya no son borrador
-    private boolean isPublishable(Match match, Competition competition) {
-        return competition.getStatus() != CompetitionStatus.DRAFT && match.isComplete();
-    }
-
-    private void publishIfReady(Match match, Competition competition) {
-        if (!isPublishable(match, competition)) {
-            return;
-        }
-        Enrollment home = findEnrollment(match.getCompetitionId(), match.getHomeTeamId());
-        Enrollment away = findEnrollment(match.getCompetitionId(), match.getAwayTeamId());
-        matchUpdatedPublisher.publish(match, competition, home, away);
     }
 
     private void publishResult(Match match) {

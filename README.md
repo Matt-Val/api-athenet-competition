@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-Microservicio de competencias de <strong>Athenet</strong>: administra competencias, nómina de equipos, la llave de la copa y los resultados deportivos. Publica en RabbitMQ los partidos programados, que Eventos copia a su calendario, y los resultados que utiliza Ranking.
+Microservicio de competencias de <strong>Athenet</strong>: administra competencias, nómina de equipos, la llave de la copa y los resultados deportivos. Publica en RabbitMQ los resultados que utiliza Notificaciones.
 </p>
 
 <h4 align="center"><strong>
@@ -50,7 +50,7 @@ Competencia es la dueña de los encuentros y la fuente de verdad de los resultad
 | `GET` | `/api/public/competitions/{id}` | Público | Detalle de competencia |
 | `GET` | `/api/public/competitions/{id}/teams` | Público | Nómina de equipos |
 | `GET` | `/api/public/competitions/{id}/matches` | Público | Llave y resultados |
-| `GET` | `/api/public/matches/{id}` | Público | Partido por ID (Eventos lo guarda como `competitionMatchId`) |
+| `GET` | `/api/public/matches/{id}` | Público | Partido por ID |
 | `GET` | `/api/public/matches?teamId&status&limit` | Público | Últimos partidos del equipo, con nombre y logo de ambos equipos |
 | `GET` | `/api/admin/competitions?sportId` | `DIRECTOR` | Listado que incluye borradores |
 | `GET` | `/api/admin/competitions/{id}` | `DIRECTOR` | Detalle en cualquier estado |
@@ -103,30 +103,9 @@ Competencia solo publica; cada consumidor declara su cola, binding y DLQ. Detall
 
 | Routing key | Dirección | Cola | Efecto |
 | :--- | :--- | :--- | :--- |
-| `partido.actualizado` | Publica | `eventos.partidos`, declarada por Eventos | Eventos crea o actualiza su copia del partido (`PARTIDO-{matchId}`) |
-| `resultado.registrado` | Publica | `ranking.resultados`, declarada por Ranking | Ranking recalcula la tabla |
+| `resultado.registrado` | Publica | Declarada por Notificaciones | Notificaciones avisa el resultado |
 
-El exchange es `athenet.topic`. `partido.actualizado` se publica cada vez que se guarda un partido completo de una competencia que ya no es borrador: al iniciar la copa, al programar un partido, al avanzar un ganador y al editar la competencia. Los borradores nunca llegan a Eventos.
-
-```json
-{
-  "messageId": "uuid",
-  "occurredAt": "2026-10-12T21:00:00Z",
-  "type": "partido.actualizado",
-  "data": {
-    "matchId": 1, "competitionId": 1, "sportId": 1,
-    "title": "Octavos de final: Halcones vs Pumas",
-    "description": "Copa Instituciones de Chile 2026",
-    "competitionImg": "https://...",
-    "date": "2026-11-08", "time": "18:00",
-    "location": "Santiago, Chile", "address": "Av. Grecia 2001",
-    "homeTeamId": 1, "awayTeamId": 2,
-    "delegateOid": "uuid", "delegateDisplayName": "Delegado de prueba"
-  }
-}
-```
-
-El resultado se publica cada vez que el delegado finaliza o corrige un partido. `version` es 1 al finalizar y sube en cada corrección: el consumidor procesa el mensaje solo si su `version` es mayor que la última guardada para ese `matchId`. Los nombres y la ronda van listos para mostrar:
+El exchange es `athenet.topic`. El resultado se publica cada vez que el delegado finaliza o corrige un partido. `version` es 1 al finalizar y sube en cada corrección: el consumidor procesa el mensaje solo si su `version` es mayor que la última guardada para ese `matchId`. Los nombres y la ronda van listos para mostrar:
 
 ```json
 {
@@ -147,7 +126,7 @@ El resultado se publica cada vez que el delegado finaliza o corrige un partido. 
 }
 ```
 
-Ranking y Eventos deben declarar sus colas y bindings antes de que se publique. La tabla y el calendario se actualizan de forma eventual.
+Notificaciones debe declarar su cola y binding antes de que se publique.
 
 ### Desarrollo Local
 
@@ -206,7 +185,7 @@ El esquema lo crea Hibernate (`ddl-auto=update`), que no borra columnas ni quita
 DROP TABLE IF EXISTS match;
 ```
 
-En el broker también se puede borrar, desde la UI de administración, la cola `competencia.eventos` y su DLQ: competencia ya no consume eventos.
+En el broker también se pueden borrar, desde la UI de administración, las colas `competencia.eventos` y `eventos.partidos` con sus DLQ: ya no tienen consumidor.
 
 #### 3. Servidor de desarrollo
 
@@ -253,7 +232,7 @@ Content-Type: application/json
 }
 ```
 
-4. `PATCH .../{id}/status` con `{ "status": "IN_PROGRESS" }`. Se publican los partidos completos (`partido.actualizado`).
+4. `PATCH .../{id}/status` con `{ "status": "IN_PROGRESS" }`.
 
 Con un token de rol `delegate` cuyo `oid` sea el del partido:
 
@@ -272,7 +251,7 @@ Content-Type: application/json
 
 Devuelve `200`, `status: FINISHED` y una versión incrementada; el ganador aparece en el partido siguiente. Repetir con otro marcador corrige el resultado e incrementa nuevamente `version`. Un empate, un partido sin iniciar o cambiar el ganador cuando el partido siguiente ya comenzó devuelven `409`; otro delegado recibe `403`.
 
-Para observar las publicaciones, crear una cola temporal `prueba.competencia` y vincularla a `athenet.topic` con las routing keys `partido.actualizado` y `resultado.registrado`. Inspeccionar su payload desde **Get messages**. Esta cola de diagnóstico no reemplaza las colas de los servicios.
+Para observar las publicaciones, crear una cola temporal `prueba.competencia` y vincularla a `athenet.topic` con la routing key `resultado.registrado`. Inspeccionar su payload desde **Get messages**. Esta cola de diagnóstico no reemplaza las colas de los servicios.
 
 ### Despliegue
 
@@ -314,7 +293,7 @@ src/main/java/com/athenet/competition/
 
 ### Estado de Verificación
 
-* **Pruebas automatizadas:** llave de 15 partidos, sorteo de octavos, avance del ganador, correcciones, empates, delegado asignado, inicio y fin de la copa, seguridad HTTP por rol, JSON publicado (`partido.actualizado` y `resultado.registrado`) y envío después del commit.
-* **Pendiente en el entorno del equipo:** flujo completo con Eventos consumiendo `partido.actualizado`, consumo real por Ranking y despliegue EC2.
+* **Pruebas automatizadas:** llave de 15 partidos, sorteo de octavos, avance del ganador, correcciones, empates, delegado asignado, inicio y fin de la copa, seguridad HTTP por rol, JSON publicado (`resultado.registrado`) y envío después del commit.
+* **Pendiente en el entorno del equipo:** consumo real por Notificaciones y despliegue EC2.
 
-La BD y RabbitMQ no comparten una transacción: los mensajes se envían después del commit, así que un cambio revertido nunca se publica. Si el broker falla después del commit, el cambio queda guardado, el error se registra en el log y el mensaje se pierde. No se implementó outbox ni recuperación de publicaciones; una copia desactualizada en Eventos se corrige volviendo a publicar (editar la competencia republica sus partidos). Eventos hace upsert por `matchId`, así que tolera entregas repetidas.
+La BD y RabbitMQ no comparten una transacción: los mensajes se envían después del commit, así que un cambio revertido nunca se publica. Si el broker falla después del commit, el cambio queda guardado, el error se registra en el log y el mensaje se pierde. No se implementó outbox ni recuperación de publicaciones.

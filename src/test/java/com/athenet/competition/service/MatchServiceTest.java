@@ -20,7 +20,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import com.athenet.competition.exception.ConflictException;
 import com.athenet.competition.exception.ForbiddenException;
 import com.athenet.competition.exception.ResourceNotFoundException;
-import com.athenet.competition.messaging.MatchUpdatedPublisher;
 import com.athenet.competition.messaging.ResultEventPublisher;
 import com.athenet.competition.model.*;
 import com.athenet.competition.model.enums.*;
@@ -34,7 +33,6 @@ class MatchServiceTest {
     @Mock CompetitionRepository competitions;
     @Mock EnrollmentRepository enrollments;
     @Mock ResultEventPublisher resultPublisher;
-    @Mock MatchUpdatedPublisher matchPublisher;
     MatchService service;
     Competition competition;
     // Octavos, posición 3: su ganador pasa a cuartos, posición 2, de local
@@ -45,7 +43,7 @@ class MatchServiceTest {
 
     @BeforeEach
     void setup() {
-        service = new MatchService(matches, competitions, enrollments, resultPublisher, matchPublisher);
+        service = new MatchService(matches, competitions, enrollments, resultPublisher);
         competition = new Competition();
         competition.setId(4L);
         competition.setType(CompetitionType.CUP);
@@ -113,18 +111,15 @@ class MatchServiceTest {
         assertEquals(1, match.getVersion());
         assertEquals(12L, next.getHomeTeamId());
         verify(resultPublisher).publish(match, competition, home, away);
-        // Cuartos todavía no tiene rival: no llega a Eventos
-        verifyNoInteractions(matchPublisher);
     }
 
     @Test
-    void advancedWinnerCompletesNextMatchAndPublishesIt() {
-        Enrollment rival = new Enrollment();
+    void advancedWinnerCompletesNextMatch() {
         next.setAwayTeamId(20L);
-        when(enrollments.findByCompetitionIdAndTeamId(4L, 20L)).thenReturn(Optional.of(rival));
         service.registerResult(31L, DELEGATE, 0, 3);
         assertEquals(15L, next.getHomeTeamId());
-        verify(matchPublisher).publish(next, competition, away, rival);
+        assertEquals(20L, next.getAwayTeamId());
+        verify(matches).save(next);
     }
 
     @Test
@@ -215,8 +210,6 @@ class MatchServiceTest {
 
         assertEquals(12L, match.getHomeTeamId());
         assertEquals(15L, match.getAwayTeamId());
-        // Borrador: nada llega a Eventos
-        verifyNoInteractions(matchPublisher);
     }
 
     @Test
@@ -246,22 +239,13 @@ class MatchServiceTest {
     }
 
     @Test
-    void editingScheduledMatchOfStartedCupRepublishesIt() {
+    void editingScheduledMatchOfStartedCupSavesIt() {
         match.setStatus(MatchStatus.SCHEDULED);
         Match changes = changesFrom(match);
         changes.setLocation("Estadio Nacional");
         service.updateMatch(4L, 31L, changes);
         assertEquals("Estadio Nacional", match.getLocation());
-        verify(matchPublisher).publish(match, competition, home, away);
-    }
-
-    @Test
-    void publishedMatchCannotLoseItsSchedule() {
-        match.setStatus(MatchStatus.SCHEDULED);
-        Match changes = changesFrom(match);
-        changes.setDate(null);
-        assertThrows(ConflictException.class, () -> service.updateMatch(4L, 31L, changes));
-        verify(matches, never()).save(any());
+        verify(matches).save(match);
     }
 
     @Test

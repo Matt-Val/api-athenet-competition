@@ -90,8 +90,7 @@ public class CompetitionService {
 
     /*
         Actualiza una competencia existente. No se puede cambiar el tipo, ni sportId si ya
-        hay equipos inscritos. Si ya se inició, sus partidos se republican en Eventos
-        (el nombre y la imagen van en la copia).
+        hay equipos inscritos.
      */
     @Transactional
     public Competition update(Long id, Competition changes) {
@@ -122,17 +121,13 @@ public class CompetitionService {
         competition.setDrawPoints(changes.getDrawPoints());
         competition.setLossPoints(changes.getLossPoints());
 
-        Competition saved = competitionRepository.save(competition);
-        if (saved.getStatus() != CompetitionStatus.DRAFT) {
-            matchService.publishSchedule(saved);
-        }
-        return saved;
+        return competitionRepository.save(competition);
     }
 
     /*
         PATCH .../estado — solo permite avanzar: DRAFT -> IN_PROGRESS -> FINISHED.
         Una copa se inicia con sus 16 equipos y los octavos sorteados, y termina sola
-        con el resultado de la final. Al iniciarla, sus partidos completos se publican en Eventos.
+        con el resultado de la final.
      */
     @Transactional
     public Competition changeStatus(Long id, CompetitionStatus newStatus) {
@@ -158,14 +153,11 @@ public class CompetitionService {
         }
 
         competition.setStatus(newStatus);
-        Competition saved = competitionRepository.save(competition);
-        matchService.publishSchedule(saved);
-        return saved;
+        return competitionRepository.save(competition);
     }
 
     /*
-        DELETE .../{id} — solo si está en DRAFT. Se borra también su llave
-        (nunca llegó a Eventos: los borradores no se publican).
+        DELETE .../{id} — solo si está en DRAFT. Se borra también su llave.
      */
     @Transactional
     public void delete(Long id) {
