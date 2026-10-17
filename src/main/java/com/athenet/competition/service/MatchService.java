@@ -4,8 +4,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
@@ -19,9 +21,11 @@ import com.athenet.competition.messaging.ResultEventPublisher;
 import com.athenet.competition.model.Competition;
 import com.athenet.competition.model.Enrollment;
 import com.athenet.competition.model.Match;
+import com.athenet.competition.model.TeamProgress;
 import com.athenet.competition.model.enums.CompetitionStatus;
 import com.athenet.competition.model.enums.MatchRound;
 import com.athenet.competition.model.enums.MatchStatus;
+import com.athenet.competition.model.enums.TeamOutcome;
 import com.athenet.competition.repository.CompetitionRepository;
 import com.athenet.competition.repository.EnrollmentRepository;
 import com.athenet.competition.repository.MatchRepository;
@@ -36,6 +40,11 @@ public class MatchService {
     // Orden de la llave: por ronda (orden del enum) y posición
     private static final Comparator<Match> BRACKET_ORDER =
             Comparator.comparing(Match::getRound).thenComparingInt(Match::getPosition);
+
+    // Perfil del equipo: los más recientes primero, los que no tienen fecha al final
+    private static final Comparator<Match> LATEST_FIRST =
+            Comparator.comparing(Match::getDate, Comparator.nullsLast(Comparator.reverseOrder()))
+                    .thenComparing(Match::getTime, Comparator.nullsLast(Comparator.reverseOrder()));
 
     private final MatchRepository matchRepository;
     private final CompetitionRepository competitionRepository;
@@ -69,6 +78,41 @@ public class MatchService {
                 .sorted(Comparator.comparing(Match::getDate, Comparator.nullsLast(Comparator.naturalOrder()))
                         .thenComparing(Match::getTime, Comparator.nullsLast(Comparator.naturalOrder())))
                 .toList();
+    }
+
+    // Partido del perfil del equipo, con su competencia y los dos inscritos (null si aún no hay rival)
+    public record TeamMatch(Match match, Competition competition, Enrollment home, Enrollment away) {
+    }
+
+    // Perfil público del equipo: sus partidos en competencias ya iniciadas (los borradores no se ven)
+    public List<TeamMatch> listForTeam(Long teamId, MatchStatus status, int limit) {
+        List<Match> teamMatches = matchRepository.findByTeamId(teamId).stream()
+                .filter(match -> status == null || match.getStatus() == status)
+                .toList();
+        Set<Long> competitionIds = teamMatches.stream().map(Match::getCompetitionId).collect(Collectors.toSet());
+        Map<Long, Competition> visible = competitionRepository.findAllById(competitionIds).stream()
+                .filter(competition -> competition.getStatus() != CompetitionStatus.DRAFT)
+                .collect(Collectors.toMap(Competition::getId, Function.identity()));
+        Map<Long, Map<Long, Enrollment>> enrolled = enrollmentRepository.findByCompetitionIdIn(visible.keySet()).stream()
+                .collect(Collectors.groupingBy(Enrollment::getCompetitionId,
+                        Collectors.toMap(Enrollment::getTeamId, Function.identity())));
+        return teamMatches.stream()
+                .filter(match -> visible.containsKey(match.getCompetitionId()))
+                .sorted(LATEST_FIRST)
+                .limit(limit)
+                .map(match -> {
+                    Map<Long, Enrollment> teams = enrolled.get(match.getCompetitionId());
+                    return new TeamMatch(match, visible.get(match.getCompetitionId()),
+                            teams.get(match.getHomeTeamId()), teams.get(match.getAwayTeamId()));
+                })
+                .toList();
+    }
+
+    // Cómo le fue al equipo en cada competencia, por competitionId
+    public Map<Long, TeamProgress> progressByCompetition(Long teamId) {
+        return matchRepository.findByTeamId(teamId).stream()
+                .collect(Collectors.groupingBy(Match::getCompetitionId,
+                        Collectors.collectingAndThen(Collectors.toList(), matches -> progressOf(teamId, matches))));
     }
 
     // Llave de la copa: 8 + 4 + 2 + 1 partidos vacíos, que el director programa y los resultados van llenando
@@ -285,6 +329,25 @@ public class MatchService {
     // Sin empates: siempre hay ganador cuando hay marcador
     private static Long winnerOf(Match match) {
         return match.getHomeScore() > match.getAwayScore() ? match.getHomeTeamId() : match.getAwayTeamId();
+    }
+
+    /*
+        Ronda más lejana a la que llegó y partidos terminados. Una derrota lo elimina (es copa)
+        y ganar la final lo deja campeón; si no, sigue en carrera.
+    */
+    private static TeamProgress progressOf(Long teamId, List<Match> matches) {
+        MatchRound round = matches.stream().map(Match::getRound).max(Comparator.naturalOrder()).orElseThrow();
+        List<Match> finished = matches.stream().filter(match -> match.getStatus() == MatchStatus.FINISHED).toList();
+        int won = (int) finished.stream().filter(match -> teamId.equals(winnerOf(match))).count();
+        int lost = finished.size() - won;
+
+        TeamOutcome outcome = TeamOutcome.ACTIVE;
+        if (lost > 0) {
+            outcome = TeamOutcome.ELIMINATED;
+        } else if (finished.stream().anyMatch(match -> match.getRound() == MatchRound.FINAL)) {
+            outcome = TeamOutcome.CHAMPION;
+        }
+        return new TeamProgress(round, outcome, finished.size(), won, lost);
     }
 
     private Match findDelegateMatch(Long matchId, String delegateOid) {

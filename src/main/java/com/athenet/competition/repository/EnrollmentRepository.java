@@ -1,5 +1,6 @@
 package com.athenet.competition.repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -22,4 +23,10 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, Long> {
 
     // Cupo de la copa
     long countByCompetitionId(Long competitionId);
+
+    // Perfil del equipo: competencias en las que está inscrito
+    List<Enrollment> findByTeamId(Long teamId);
+
+    // Nombres y logos de los equipos en los partidos del perfil
+    List<Enrollment> findByCompetitionIdIn(Collection<Long> competitionIds);
 }

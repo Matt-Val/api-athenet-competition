@@ -4,7 +4,9 @@ import org.springframework.stereotype.Component;
 
 import com.athenet.competition.dto.request.CompetitionRequest;
 import com.athenet.competition.dto.response.CompetitionResponse;
+import com.athenet.competition.dto.response.TeamCompetitionResponse;
 import com.athenet.competition.model.Competition;
+import com.athenet.competition.model.TeamProgress;
 
 @Component
 public class CompetitionMapper {
@@ -47,5 +49,9 @@ public class CompetitionMapper {
                 competition.getDrawPoints(),
                 competition.getLossPoints()
         );
+    }
+
+    public TeamCompetitionResponse toTeamResponse(Competition competition, TeamProgress progress) {
+        return new TeamCompetitionResponse(toResponse(competition), progress);
     }
 }

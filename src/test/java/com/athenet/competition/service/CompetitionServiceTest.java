@@ -3,6 +3,9 @@ package com.athenet.competition.service;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.AdditionalAnswers.returnsFirstArg;
 import static org.mockito.Mockito.*;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import com.athenet.competition.client.InstitutionClient;
@@ -10,8 +13,12 @@ import com.athenet.competition.client.SportInfo;
 import com.athenet.competition.exception.ConflictException;
 import com.athenet.competition.exception.UpstreamServiceException;
 import com.athenet.competition.model.Competition;
+import com.athenet.competition.model.Enrollment;
+import com.athenet.competition.model.TeamProgress;
 import com.athenet.competition.model.enums.CompetitionStatus;
 import com.athenet.competition.model.enums.CompetitionType;
+import com.athenet.competition.model.enums.MatchRound;
+import com.athenet.competition.model.enums.TeamOutcome;
 import com.athenet.competition.repository.*;
 
 class CompetitionServiceTest {
@@ -34,6 +41,31 @@ class CompetitionServiceTest {
         competition.setType(CompetitionType.CUP);
         competition.setSportId(1L);
         return competition;
+    }
+
+    @Test void teamCompetitionsSkipDraftsAndComeLatestFirst() {
+        Competition older = new Competition();
+        older.setId(4L);
+        older.setStatus(CompetitionStatus.FINISHED);
+        older.setStartDate(LocalDate.of(2026, 6, 1));
+        Competition newer = new Competition();
+        newer.setId(5L);
+        newer.setStatus(CompetitionStatus.IN_PROGRESS);
+        newer.setStartDate(LocalDate.of(2026, 10, 1));
+        Competition draft = new Competition();
+        draft.setId(6L);
+        when(enrollments.findByTeamId(12L)).thenReturn(List.of(4L, 5L, 6L).stream()
+                .map(id -> new Enrollment(null, id, 12L, 1L, "Halcones FC", null))
+                .toList());
+        when(repository.findAllById(List.of(4L, 5L, 6L))).thenReturn(List.of(older, draft, newer));
+        TeamProgress progress = new TeamProgress(MatchRound.SEMI_FINAL, TeamOutcome.ELIMINATED, 3, 2, 1);
+        when(matchService.progressByCompetition(12L)).thenReturn(Map.of(4L, progress));
+
+        List<CompetitionService.TeamCompetition> result = service.listForTeam(12L, null, null, 5);
+        assertEquals(List.of(newer, older), result.stream().map(CompetitionService.TeamCompetition::competition).toList());
+        assertEquals(progress, result.get(1).progress());
+        assertEquals(List.of(newer), service.listForTeam(12L, null, null, 1).stream()
+                .map(CompetitionService.TeamCompetition::competition).toList());
     }
 
     @Test void dependencyFailureDoesNotCreateCompetition() {

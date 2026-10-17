@@ -33,4 +33,11 @@ public interface MatchRepository extends JpaRepository<Match, Long> {
               AND (m.homeTeamId = :teamId OR m.awayTeamId = :teamId)
             """)
     boolean existsByCompetitionIdAndTeamId(@Param("competitionId") Long competitionId, @Param("teamId") Long teamId);
+
+    // Perfil del equipo: sus partidos en todas las competencias
+    @Query("""
+            SELECT m FROM Match m
+            WHERE m.homeTeamId = :teamId OR m.awayTeamId = :teamId
+            """)
+    List<Match> findByTeamId(@Param("teamId") Long teamId);
 }

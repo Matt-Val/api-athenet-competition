@@ -39,17 +39,19 @@ Microservicio de competencias de <strong>Athenet</strong>: administra competenci
 
 Competencia es la dueña de los encuentros y la fuente de verdad de los resultados. Por ahora solo hay copas (`CUP`) de 16 equipos: al crear la copa se genera su llave vacía de 15 partidos (8vos, 4tos, semis y final). El director sortea los octavos y programa cada partido; el delegado asignado lo inicia y carga el resultado final. Los datos de equipos y deportes se consultan mediante endpoints GET de MS-Instituciones; cada servicio mantiene su propia base de datos.
 
-* **Pública (`/api/public/**`):** consulta de competencias, nómina, llave y marcador de un partido, sin autenticación. El listado de competencias excluye `DRAFT`.
+* **Pública (`/api/public/**`):** consulta de competencias, nómina, llave, marcador de un partido y perfil de un equipo (sus competencias y últimos partidos), sin autenticación. El listado de competencias y el perfil del equipo excluyen `DRAFT`.
 * **Administrativa (`/api/admin/competitions/**`):** gestión de competencias, equipos y programación de partidos, reservada al rol `DIRECTOR`.
 * **Delegado (`/api/delegate/matches/**`):** iniciar, finalizar y corregir los partidos asignados, reservada al rol `DELEGATE`.
 
 | Método | Endpoint | Acceso | Descripción |
 | :--- | :--- | :--- | :--- |
 | `GET` | `/api/public/competitions?sportId&status` | Público | Listado sin borradores, con filtros opcionales |
+| `GET` | `/api/public/competitions?teamId&sportId&status&limit` | Público | Competencias del equipo con su desempeño (`teamProgress`) |
 | `GET` | `/api/public/competitions/{id}` | Público | Detalle de competencia |
 | `GET` | `/api/public/competitions/{id}/teams` | Público | Nómina de equipos |
 | `GET` | `/api/public/competitions/{id}/matches` | Público | Llave y resultados |
 | `GET` | `/api/public/matches/{id}` | Público | Partido por ID (Eventos lo guarda como `competitionMatchId`) |
+| `GET` | `/api/public/matches?teamId&status&limit` | Público | Últimos partidos del equipo, con nombre y logo de ambos equipos |
 | `GET` | `/api/admin/competitions?sportId` | `DIRECTOR` | Listado que incluye borradores |
 | `GET` | `/api/admin/competitions/{id}` | `DIRECTOR` | Detalle en cualquier estado |
 | `POST` | `/api/admin/competitions` | `DIRECTOR` | Crear copa, validar el deporte y generar la llave |
@@ -73,6 +75,13 @@ No se permite cambiar el tipo, ni el deporte si hay equipos inscritos. Las inscr
 * **Programación:** el director edita fecha, hora, lugar y delegado mientras el partido no comience. Un partido es "completo" con ambos equipos, fecha, hora y delegado. Con la copa en curso, un partido completo no puede quedar incompleto.
 * **Inicio de la copa:** `DRAFT` → `IN_PROGRESS` exige 16 equipos inscritos y los octavos sorteados. La copa pasa sola a `FINISHED` al registrar el resultado de la final.
 * **Resultados:** solo el delegado asignado (claim `oid` del token igual a `delegateOid` del partido) inicia y finaliza el partido. No hay empates. Una corrección que cambia al ganador solo se acepta si el partido siguiente no ha comenzado; el director nunca registra ni corrige resultados.
+
+#### Perfil del equipo
+
+Ambas lecturas salen de la base de Competencia (los nombres y logos son la copia guardada al inscribir), sin llamar a Instituciones. `limit` vale 5 por defecto y acepta de 1 a 20; un `teamId` sin inscripciones devuelve `[]`.
+
+* **Competencias del equipo:** los mismos campos del listado, las más recientes primero, más `teamProgress`: ronda más lejana (`round`), `outcome` (`ACTIVE`, `ELIMINATED` o `CHAMPION`) y partidos terminados (`played`, `won`, `lost`).
+* **Últimos partidos:** `teamId` es obligatorio. Del más reciente al más antiguo, con la competencia (`id`, `name`, `season`, `competitionImg`) y cada lado como `{ teamId, name, logoUrl, score }`; `score` es `null` hasta que el partido termina y un lado es `null` si aún no tiene equipo. No incluye datos del delegado.
 
 ### Control de Acceso y Roles
 
@@ -117,7 +126,7 @@ El exchange es `athenet.topic`. `partido.actualizado` se publica cada vez que se
 }
 ```
 
-El resultado se publica cada vez que el delegado finaliza o corrige un partido:
+El resultado se publica cada vez que el delegado finaliza o corrige un partido. `version` es 1 al finalizar y sube en cada corrección: el consumidor procesa el mensaje solo si su `version` es mayor que la última guardada para ese `matchId`. Los nombres y la ronda van listos para mostrar:
 
 ```json
 {
@@ -125,9 +134,12 @@ El resultado se publica cada vez que el delegado finaliza o corrige un partido:
   "occurredAt": "2026-10-12T21:00:00Z",
   "type": "resultado.registrado",
   "data": {
-    "matchId": 1, "competitionId": 1, "sportId": 1,
+    "matchId": 1, "competitionId": 1,
+    "competitionName": "Copa Instituciones de Chile 2026",
+    "sportId": 1, "round": "Cuartos de final",
     "version": 1,
     "homeTeamId": 1, "awayTeamId": 2,
+    "homeTeamName": "Halcones", "awayTeamName": "Pumas",
     "homeInstitutionId": 3, "awayInstitutionId": 7,
     "homeScore": 2, "awayScore": 1,
     "points": { "win": 3, "draw": 1, "loss": 0 }
@@ -302,7 +314,7 @@ src/main/java/com/athenet/competition/
 
 ### Estado de Verificación
 
-* **Pruebas automatizadas:** llave de 15 partidos, sorteo de octavos, avance del ganador, correcciones, empates, delegado asignado, inicio y fin de la copa, seguridad HTTP por rol y JSON publicado (`partido.actualizado` y `resultado.registrado`).
+* **Pruebas automatizadas:** llave de 15 partidos, sorteo de octavos, avance del ganador, correcciones, empates, delegado asignado, inicio y fin de la copa, seguridad HTTP por rol, JSON publicado (`partido.actualizado` y `resultado.registrado`) y envío después del commit.
 * **Pendiente en el entorno del equipo:** flujo completo con Eventos consumiendo `partido.actualizado`, consumo real por Ranking y despliegue EC2.
 
-La BD y RabbitMQ no comparten una transacción: publicar antes del commit deja una ventana de inconsistencia ante fallos. No se implementó outbox ni recuperación de publicaciones. Eventos hace upsert por `matchId`, así que tolera entregas repetidas.
+La BD y RabbitMQ no comparten una transacción: los mensajes se envían después del commit, así que un cambio revertido nunca se publica. Si el broker falla después del commit, el cambio queda guardado, el error se registra en el log y el mensaje se pierde. No se implementó outbox ni recuperación de publicaciones; una copia desactualizada en Eventos se corrige volviendo a publicar (editar la competencia republica sus partidos). Eventos hace upsert por `matchId`, así que tolera entregas repetidas.

@@ -1,6 +1,8 @@
 package com.athenet.competition.service;
 
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -9,6 +11,8 @@ import com.athenet.competition.client.InstitutionClient;
 import com.athenet.competition.exception.ConflictException;
 import com.athenet.competition.exception.ResourceNotFoundException;
 import com.athenet.competition.model.Competition;
+import com.athenet.competition.model.Enrollment;
+import com.athenet.competition.model.TeamProgress;
 import com.athenet.competition.model.enums.CompetitionStatus;
 import com.athenet.competition.model.enums.CompetitionType;
 import com.athenet.competition.repository.CompetitionRepository;
@@ -62,6 +66,26 @@ public class CompetitionService {
     // GET /api/public/competencias?deporteId&estado — nunca incluye borradores.
     public List<Competition> listForPublic(Long sportId, CompetitionStatus status) {
         return competitionRepository.findPublic(sportId, status);
+    }
+
+    public record TeamCompetition(Competition competition, TeamProgress progress) {
+    }
+
+    // GET /api/public/competitions?teamId — las del equipo, las más recientes primero; nunca incluye borradores.
+    public List<TeamCompetition> listForTeam(Long teamId, Long sportId, CompetitionStatus status, int limit) {
+        List<Long> competitionIds = enrollmentRepository.findByTeamId(teamId).stream()
+                .map(Enrollment::getCompetitionId)
+                .toList();
+        Map<Long, TeamProgress> progress = matchService.progressByCompetition(teamId);
+        return competitionRepository.findAllById(competitionIds).stream()
+                .filter(competition -> competition.getStatus() != CompetitionStatus.DRAFT)
+                .filter(competition -> sportId == null || sportId.equals(competition.getSportId()))
+                .filter(competition -> status == null || competition.getStatus() == status)
+                .sorted(Comparator.comparing(Competition::getStartDate, Comparator.nullsLast(Comparator.reverseOrder()))
+                        .thenComparing(Competition::getId, Comparator.reverseOrder()))
+                .limit(limit)
+                .map(competition -> new TeamCompetition(competition, progress.get(competition.getId())))
+                .toList();
     }
 
     /*

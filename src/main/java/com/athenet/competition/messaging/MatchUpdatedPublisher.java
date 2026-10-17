@@ -4,7 +4,6 @@ import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.UUID;
 
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Component;
 
 import com.athenet.competition.config.RabbitConfig;
@@ -24,7 +23,7 @@ public class MatchUpdatedPublisher {
 
     private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm");
 
-    private final RabbitTemplate rabbitTemplate;
+    private final AfterCommitSender sender;
 
     public void publish(Match match, Competition competition, Enrollment home, Enrollment away) {
         MatchUpdatedMessage data = new MatchUpdatedMessage(
@@ -49,6 +48,6 @@ public class MatchUpdatedPublisher {
                 RabbitConfig.MATCH_UPDATED_ROUTING_KEY,
                 data);
 
-        rabbitTemplate.convertAndSend(RabbitConfig.EXCHANGE, RabbitConfig.MATCH_UPDATED_ROUTING_KEY, envelope);
+        sender.send(RabbitConfig.MATCH_UPDATED_ROUTING_KEY, envelope);
     }
 }
