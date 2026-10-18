@@ -95,4 +95,18 @@ public class PublicCompetitionController {
                 .toList();
         return ResponseEntity.ok(response);
     }
+
+    /*
+        Llave para el sitio publico: competencia, equipos y marcador en una sola respuesta.
+        Un lado viene en null mientras la ronda anterior no lo define.
+        Nunca incluye borradores (DRAFT).
+    */
+    @GetMapping("/{id}/fixture")
+    public ResponseEntity<List<FixtureMatchResponse>> listFixture(@PathVariable Long id) {
+        List<FixtureMatchResponse> response = matchService.listFixture(id).stream()
+                .map(fixture -> matchMapper.toFixtureResponse(
+                        fixture.match(), fixture.competition(), fixture.home(), fixture.away()))
+                .toList();
+        return ResponseEntity.ok(response);
+    }
 }

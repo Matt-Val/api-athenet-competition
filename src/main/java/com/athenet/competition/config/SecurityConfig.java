@@ -30,6 +30,9 @@ public class SecurityConfig {
     @Value("${app.cors.admin-origins:http://localhost:4200}")
     private List<String> adminOrigins;
 
+    @Value("${app.cors.public-origins:http://localhost:5173}")
+    private List<String> publicOrigins;
+
     @Bean
     SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
@@ -82,11 +85,7 @@ public class SecurityConfig {
     CorsConfigurationSource corsConfigurationSource() {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
 
-        /* 
-            A diferencia de Eventos, acá no hace falta CORS para /api/public/**. 
-            El único origen que se llama desde un navegador es el de admin Angular, 
-            contra /api/admin/**.
-        */
+        // Admin desde Angular contra /api/admin/**: manda token, asi que va con credenciales.
         CorsConfiguration adminCfg = new CorsConfiguration();
         adminCfg.setAllowedOrigins(adminOrigins);
         adminCfg.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
@@ -96,6 +95,15 @@ public class SecurityConfig {
         adminCfg.setMaxAge(3600L);
 
         source.registerCorsConfiguration("/api/admin/**", adminCfg);
+
+        // El sitio publico lee /api/public/** desde el navegador: anonimo, no credenciales.
+        CorsConfiguration publicCfg = new CorsConfiguration();
+        publicCfg.setAllowedOrigins(publicOrigins);
+        publicCfg.setAllowedMethods(List.of("GET", "OPTIONS"));
+        publicCfg.setAllowedHeaders(List.of("Content-Type", "Accept", "Origin"));
+        publicCfg.setMaxAge(3600L);
+
+        source.registerCorsConfiguration("/api/public/**", publicCfg);
 
         return source;
     }
