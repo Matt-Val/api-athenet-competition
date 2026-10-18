@@ -23,6 +23,10 @@ public record MatchResponse(
     MatchStatus status,
     Integer homeScore,
     Integer awayScore,
-    int version
+    int version,
+    LocalDate endDate,
+    @JsonFormat(pattern = "HH:mm") LocalTime endTime,
+    boolean scheduleConfirmed,
+    int scheduleVersion
 ) {
 }

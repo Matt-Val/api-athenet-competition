@@ -32,7 +32,7 @@ class CompetitionServiceTest {
         Competition competition = new Competition();
         competition.setId(4L);
         competition.setSportId(1L);
-        when(repository.findById(4L)).thenReturn(Optional.of(competition));
+        when(repository.findLockedById(4L)).thenReturn(Optional.of(competition));
         return competition;
     }
 

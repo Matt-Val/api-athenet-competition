@@ -19,6 +19,8 @@ public class MatchMapper {
         Match match = new Match();
         match.setDate(request.date());
         match.setTime(request.time());
+        match.setEndDate(request.endDate());
+        match.setEndTime(request.endTime());
         match.setLocation(request.location());
         match.setAddress(request.address());
         match.setHomeTeamId(request.homeTeamId());
@@ -45,7 +47,8 @@ public class MatchMapper {
                 match.getStatus(),
                 match.getHomeScore(),
                 match.getAwayScore(),
-                match.getVersion()
+                match.getVersion(),
+                match.getEndDate(), match.getEndTime(), match.isScheduleConfirmed(), match.getScheduleVersion()
         );
     }
 

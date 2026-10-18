@@ -21,7 +21,7 @@ class EnrollmentServiceTest {
     void competition() {
         Competition competition = new Competition();
         competition.setSportId(1L);
-        when(competitions.findById(4L)).thenReturn(Optional.of(competition));
+        when(competitions.findLockedById(4L)).thenReturn(Optional.of(competition));
     }
 
     @Test void enrollmentCopiesTeamAndInstitutionData() {
@@ -53,7 +53,7 @@ class EnrollmentServiceTest {
         Competition cup = new Competition();
         cup.setSportId(1L);
         cup.setType(CompetitionType.CUP);
-        when(competitions.findById(4L)).thenReturn(Optional.of(cup));
+        when(competitions.findLockedById(4L)).thenReturn(Optional.of(cup));
         when(enrollments.countByCompetitionId(4L)).thenReturn(16L);
         assertThrows(ConflictException.class, () -> service.enroll(4L, 12L));
         verifyNoInteractions(institutions);
@@ -61,6 +61,7 @@ class EnrollmentServiceTest {
     }
 
     @Test void teamWithMatchesCannotBeRemoved() {
+        competition();
         when(enrollments.findByCompetitionIdAndTeamId(4L, 12L)).thenReturn(Optional.of(new Enrollment()));
         when(matches.existsByCompetitionIdAndTeamId(4L, 12L)).thenReturn(true);
         assertThrows(ConflictException.class, () -> service.unenroll(4L, 12L));

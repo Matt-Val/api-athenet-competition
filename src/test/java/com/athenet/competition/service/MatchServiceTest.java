@@ -21,6 +21,7 @@ import com.athenet.competition.exception.ConflictException;
 import com.athenet.competition.exception.ForbiddenException;
 import com.athenet.competition.exception.ResourceNotFoundException;
 import com.athenet.competition.messaging.ResultEventPublisher;
+import com.athenet.competition.messaging.ScheduleEventPublisher;
 import com.athenet.competition.model.*;
 import com.athenet.competition.model.enums.*;
 import com.athenet.competition.repository.*;
@@ -33,6 +34,7 @@ class MatchServiceTest {
     @Mock CompetitionRepository competitions;
     @Mock EnrollmentRepository enrollments;
     @Mock ResultEventPublisher resultPublisher;
+    @Mock ScheduleEventPublisher schedulePublisher;
     MatchService service;
     Competition competition;
     // Octavos, posición 3: su ganador pasa a cuartos, posición 2, de local
@@ -43,9 +45,10 @@ class MatchServiceTest {
 
     @BeforeEach
     void setup() {
-        service = new MatchService(matches, competitions, enrollments, resultPublisher);
+        service = new MatchService(matches, competitions, enrollments, resultPublisher, schedulePublisher);
         competition = new Competition();
         competition.setId(4L);
+        competition.setCompetitionImg("https://example.test/cup.png");
         competition.setType(CompetitionType.CUP);
         competition.setStatus(CompetitionStatus.IN_PROGRESS);
         match = match(31L, MatchRound.ROUND_OF_16, 3, 12L, 15L);
@@ -55,6 +58,8 @@ class MatchServiceTest {
         away = new Enrollment();
         lenient().when(matches.findById(31L)).thenReturn(Optional.of(match));
         lenient().when(matches.findById(40L)).thenReturn(Optional.of(next));
+        lenient().when(competitions.findLockedById(4L)).thenReturn(Optional.of(competition));
+        lenient().when(matches.findCompetitionIdById(anyLong())).thenReturn(Optional.of(4L));
         lenient().when(competitions.findById(4L)).thenReturn(Optional.of(competition));
         lenient().when(matches.findByCompetitionIdAndRoundAndPosition(4L, MatchRound.QUARTER_FINAL, 2))
                 .thenReturn(Optional.of(next));
@@ -73,6 +78,9 @@ class MatchServiceTest {
         match.setAwayTeamId(awayTeamId);
         match.setDate(LocalDate.of(2026, 11, 8));
         match.setTime(LocalTime.of(18, 0));
+        match.setEndDate(match.getDate());
+        match.setEndTime(LocalTime.of(20, 0));
+        match.setScheduleConfirmed(true);
         match.setDelegateOid(DELEGATE);
         match.setDelegateDisplayName("Delegado de prueba");
         return match;
@@ -82,6 +90,8 @@ class MatchServiceTest {
         Match changes = new Match();
         changes.setDate(match.getDate());
         changes.setTime(match.getTime());
+        changes.setEndDate(match.getEndDate());
+        changes.setEndTime(match.getEndTime());
         changes.setLocation(match.getLocation());
         changes.setAddress(match.getAddress());
         changes.setHomeTeamId(match.getHomeTeamId());
@@ -111,6 +121,45 @@ class MatchServiceTest {
         assertEquals(1, match.getVersion());
         assertEquals(12L, next.getHomeTeamId());
         verify(resultPublisher).publish(match, competition, home, away);
+    }
+
+    @Test
+    void confirmationIsSeparateAndIdempotentAndChangesRequireReconfirmation() {
+        match.setStatus(MatchStatus.SCHEDULED);
+        match.setScheduleConfirmed(false);
+        service.confirmSchedule(4L,31L);
+        service.confirmSchedule(4L,31L);
+        assertTrue(match.isScheduleConfirmed());
+        assertEquals(1,match.getScheduleVersion());
+        verify(schedulePublisher,times(1)).publish(match,competition,home,away);
+        Match changes = changesFrom(match);
+        changes.setLocation("Otro estadio");
+        service.updateMatch(4L,31L,changes);
+        assertFalse(match.isScheduleConfirmed());
+        assertThrows(ConflictException.class,() -> service.start(31L,DELEGATE));
+        service.confirmSchedule(4L,31L);
+        assertEquals(2,match.getScheduleVersion());
+        verify(schedulePublisher,times(2)).publish(match,competition,home,away);
+    }
+
+    @Test
+    void confirmationRequiresValidExplicitEnd() {
+        match.setStatus(MatchStatus.SCHEDULED);
+        match.setScheduleConfirmed(false);
+        match.setEndDate(null);
+        assertThrows(ConflictException.class,() -> service.confirmSchedule(4L,31L));
+        match.setEndDate(match.getDate());
+        match.setEndTime(match.getTime());
+        assertThrows(ConflictException.class,() -> service.confirmSchedule(4L,31L));
+        verifyNoInteractions(schedulePublisher);
+    }
+
+    @Test
+    void identicalResultIsIdempotent() {
+        service.registerResult(31L, DELEGATE, 2, 1);
+        service.registerResult(31L, DELEGATE, 2, 1);
+        assertEquals(1, match.getVersion());
+        verify(resultPublisher, times(1)).publish(match, competition, home, away);
     }
 
     @Test

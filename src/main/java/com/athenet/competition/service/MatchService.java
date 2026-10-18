@@ -17,6 +17,7 @@ import com.athenet.competition.exception.ConflictException;
 import com.athenet.competition.exception.ForbiddenException;
 import com.athenet.competition.exception.ResourceNotFoundException;
 import com.athenet.competition.messaging.ResultEventPublisher;
+import com.athenet.competition.messaging.ScheduleEventPublisher;
 import com.athenet.competition.model.Competition;
 import com.athenet.competition.model.Enrollment;
 import com.athenet.competition.model.Match;
@@ -49,6 +50,7 @@ public class MatchService {
     private final CompetitionRepository competitionRepository;
     private final EnrollmentRepository enrollmentRepository;
     private final ResultEventPublisher resultEventPublisher;
+    private final ScheduleEventPublisher scheduleEventPublisher;
 
     public Match getById(Long id) {
         return findEntityById(id);
@@ -131,6 +133,7 @@ public class MatchService {
 
     @Transactional
     public void deleteByCompetition(Long competitionId) {
+        matchRepository.findByCompetitionId(competitionId).forEach(scheduleEventPublisher::cancel);
         matchRepository.deleteByCompetitionId(competitionId);
     }
 
@@ -148,6 +151,7 @@ public class MatchService {
     */
     @Transactional
     public Match updateMatch(Long competitionId, Long matchId, Match changes) {
+        lockCompetition(competitionId);
         Match match = findCompetitionMatch(competitionId, matchId);
         Competition competition = findCompetition(competitionId);
 
@@ -166,20 +170,70 @@ public class MatchService {
             validateDraw(competition, match, changes.getHomeTeamId(), changes.getAwayTeamId());
         }
 
+        boolean scheduleChanged = !scheduleFields(match).equals(scheduleFields(changes));
+        if (scheduleChanged) scheduleEventPublisher.cancel(match);
         match.setDate(changes.getDate());
         match.setTime(changes.getTime());
+        match.setEndDate(changes.getEndDate());
+        match.setEndTime(changes.getEndTime());
         match.setLocation(changes.getLocation());
         match.setAddress(changes.getAddress());
         match.setHomeTeamId(changes.getHomeTeamId());
         match.setAwayTeamId(changes.getAwayTeamId());
         match.setDelegateOid(changes.getDelegateOid());
         match.setDelegateDisplayName(changes.getDelegateDisplayName());
+        if (scheduleChanged) match.setScheduleConfirmed(false);
         return matchRepository.save(match);
+    }
+
+    @Transactional
+    public Match confirmSchedule(Long competitionId, Long matchId) {
+        lockCompetition(competitionId);
+        Match match = findCompetitionMatch(competitionId, matchId);
+        if (match.getStatus() != MatchStatus.SCHEDULED) {
+            throw new ConflictException("Solo se confirma un encuentro que no ha comenzado");
+        }
+        if (!match.isComplete() || match.getEndDate() == null || match.getEndTime() == null
+                || !java.time.LocalDateTime.of(match.getEndDate(), match.getEndTime())
+                    .isAfter(java.time.LocalDateTime.of(match.getDate(), match.getTime()))) {
+            throw new ConflictException("El encuentro requiere equipos, delegado e inicio y término válidos");
+        }
+        if (match.isScheduleConfirmed()) return match;
+        Competition competition = findCompetition(competitionId);
+        if (competition.getStatus() == CompetitionStatus.FINISHED) {
+            throw new ConflictException("La competencia ya finalizó");
+        }
+        if (competition.getCompetitionImg() == null || competition.getCompetitionImg().isBlank()) {
+            throw new ConflictException("La competencia requiere una portada para publicar el encuentro");
+        }
+        match.setScheduleConfirmed(true);
+        match.setScheduleVersion(match.getScheduleVersion() + 1);
+        Match saved = matchRepository.save(match);
+        scheduleEventPublisher.publish(saved, competition,
+                findEnrollment(competitionId, match.getHomeTeamId()), findEnrollment(competitionId, match.getAwayTeamId()));
+        return saved;
+    }
+
+    @Transactional
+    public void refreshConfirmedSchedules(Competition competition) {
+        for (Match match : matchRepository.findByCompetitionId(competition.getId())) {
+            if (!match.isScheduleConfirmed()) continue;
+            match.setScheduleVersion(match.getScheduleVersion() + 1);
+            scheduleEventPublisher.publish(match,competition,
+                    findEnrollment(competition.getId(),match.getHomeTeamId()),
+                    findEnrollment(competition.getId(),match.getAwayTeamId()));
+        }
+    }
+
+    private static List<Object> scheduleFields(Match m) {
+        return Arrays.asList(m.getDate(), m.getTime(), m.getEndDate(), m.getEndTime(), m.getLocation(), m.getAddress(),
+                m.getHomeTeamId(), m.getAwayTeamId(), m.getDelegateOid(), m.getDelegateDisplayName());
     }
 
     // POST /api/delegate/matches/{id}/start: puede ser antes de la hora programada
     @Transactional
     public Match start(Long matchId, String delegateOid) {
+        lockMatchCompetition(matchId);
         Match match = findDelegateMatch(matchId, delegateOid);
         Competition competition = findCompetition(match.getCompetitionId());
 
@@ -191,6 +245,9 @@ public class MatchService {
         }
         if (!match.isComplete()) {
             throw new ConflictException("El partido todavía no tiene equipos, fecha, hora y delegado");
+        }
+        if (!match.isScheduleConfirmed()) {
+            throw new ConflictException("El director debe confirmar la programación del encuentro antes de iniciarlo");
         }
 
         match.setStatus(MatchStatus.IN_PROGRESS);
@@ -204,6 +261,7 @@ public class MatchService {
     */
     @Transactional
     public Match registerResult(Long matchId, String delegateOid, int homeScore, int awayScore) {
+        lockMatchCompetition(matchId);
         Match match = findDelegateMatch(matchId, delegateOid);
 
         if (homeScore < 0 || awayScore < 0) {
@@ -214,6 +272,12 @@ public class MatchService {
         }
         if (match.getStatus() == MatchStatus.SCHEDULED) {
             throw new ConflictException("Primero hay que iniciar el partido");
+        }
+
+        if (match.getStatus() == MatchStatus.FINISHED
+                && Objects.equals(match.getHomeScore(), homeScore)
+                && Objects.equals(match.getAwayScore(), awayScore)) {
+            return match;
         }
 
         Long previousWinner = match.getStatus() == MatchStatus.FINISHED ? winnerOf(match) : null;
@@ -259,6 +323,8 @@ public class MatchService {
         } else {
             next.setAwayTeamId(winner);
         }
+        scheduleEventPublisher.cancel(next);
+        next.setScheduleConfirmed(false);
         matchRepository.save(next);
     }
 
@@ -293,6 +359,17 @@ public class MatchService {
         Enrollment away = findEnrollment(match.getCompetitionId(), match.getAwayTeamId());
 
         resultEventPublisher.publish(match, competition, home, away);
+    }
+
+    private void lockMatchCompetition(Long matchId) {
+        Long competitionId = matchRepository.findCompetitionIdById(matchId)
+                .orElseThrow(() -> new ResourceNotFoundException("Encuentro no encontrado"));
+        lockCompetition(competitionId);
+    }
+
+    private void lockCompetition(Long competitionId) {
+        competitionRepository.findLockedById(competitionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Competencia no encontrada"));
     }
 
     // Sin empates: siempre hay ganador cuando hay marcador

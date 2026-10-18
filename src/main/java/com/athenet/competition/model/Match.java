@@ -8,7 +8,6 @@ import com.athenet.competition.model.enums.MatchStatus;
 
 import jakarta.persistence.*;
 import jakarta.persistence.Table;
-import lombok.AllArgsConstructor;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -22,7 +21,6 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
-@AllArgsConstructor
 @EqualsAndHashCode(of = "id")
 @Entity
 @Table(name = "match", uniqueConstraints = @UniqueConstraint(columnNames = {"competition_id", "round", "position"}))
@@ -47,6 +45,11 @@ public class Match {
 
     // Hora en America/Santiago, igual que startTime en Eventos.
     private LocalTime time;
+
+    private LocalDate endDate;
+    private LocalTime endTime;
+    @Column(nullable = false) private boolean scheduleConfirmed;
+    @Column(nullable = false) private int scheduleVersion;
 
     private String location;
 
