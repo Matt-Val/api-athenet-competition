@@ -10,6 +10,7 @@ import com.athenet.competition.repository.*;
     "spring.autoconfigure.exclude=org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration,org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration",
     "spring.rabbitmq.listener.simple.auto-startup=false",
     "spring.rabbitmq.dynamic=false",
+    "app.messaging.outbox-enabled=false",
     "DB_PASSWORD=test-only",
     "RABBITMQ_PASSWORD=test-only"
 })
@@ -17,6 +18,7 @@ class CompetitionApplicationTests {
     @MockitoBean CompetitionRepository competitions;
     @MockitoBean EnrollmentRepository enrollments;
     @MockitoBean MatchRepository matches;
+    @MockitoBean OutboxMessageRepository outbox;
     @MockitoBean JwtDecoder jwtDecoder;
 
 	@Test

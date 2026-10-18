@@ -52,6 +52,14 @@ public class RabbitConfig {
     }
 
     @Bean
+    RabbitTemplate outboxRabbitTemplate(ConnectionFactory connectionFactory) {
+        RabbitTemplate template = new RabbitTemplate(connectionFactory);
+        template.setMandatory(true);
+        template.setUsePublisherConnection(true);
+        return template;
+    }
+
+    @Bean
     TopicExchange athenetTopicExchange() {
         return new TopicExchange(EXCHANGE, true, false);
     }
