@@ -106,6 +106,30 @@ public class MatchService {
                 .toList();
     }
 
+    // Partido de la llave publica, con su competencia y los dos inscritos (null si aun no hay equipo)
+    public record FixtureMatch(Match match, Competition competition, Enrollment home, Enrollment away) {
+    }
+
+    /*
+        Llave publica de una competencia, en orden de cuadro. No reusa listByCompetition
+        porque ese lo comparte el controller de admin, que necesita ver la llave en DRAFT
+        para hacer el sorteo.
+    */
+    public List<FixtureMatch> listFixture(Long competitionId) {
+        Competition competition = findCompetition(competitionId);
+        if (competition.getStatus() == CompetitionStatus.DRAFT) {
+            throw new ResourceNotFoundException(
+                    "Competencia con id " + competitionId + " no fue encontrada");
+        }
+        Map<Long, Enrollment> enrolled = enrollmentRepository.findByCompetitionId(competitionId).stream()
+                .collect(Collectors.toMap(Enrollment::getTeamId, Function.identity()));
+        return matchRepository.findByCompetitionId(competitionId).stream()
+                .sorted(BRACKET_ORDER)
+                .map(match -> new FixtureMatch(match, competition,
+                        enrolled.get(match.getHomeTeamId()), enrolled.get(match.getAwayTeamId())))
+                .toList();
+    }
+
     // Cómo le fue al equipo en cada competencia, por competitionId
     public Map<Long, TeamProgress> progressByCompetition(Long teamId) {
         return matchRepository.findByTeamId(teamId).stream()

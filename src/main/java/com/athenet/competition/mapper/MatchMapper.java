@@ -3,6 +3,7 @@ package com.athenet.competition.mapper;
 import org.springframework.stereotype.Component;
 
 import com.athenet.competition.dto.request.MatchUpdateRequest;
+import com.athenet.competition.dto.response.FixtureMatchResponse;
 import com.athenet.competition.dto.response.MatchResponse;
 import com.athenet.competition.dto.response.TeamMatchResponse;
 import com.athenet.competition.dto.response.TeamMatchResponse.CompetitionSummary;
@@ -63,6 +64,28 @@ public class MatchMapper {
                 teamScore(home, match.getHomeScore()),
                 teamScore(away, match.getAwayScore())
         );
+    }
+
+    public FixtureMatchResponse toFixtureResponse(Match match, Competition competition, Enrollment home, Enrollment away) {
+        return new FixtureMatchResponse(
+                match.getId(),
+                new FixtureMatchResponse.CompetitionSummary(competition.getId(), competition.getName(),
+                        competition.getSeason(), competition.getSportId(), competition.getCompetitionImg()),
+                match.getRound(),
+                match.getPosition(),
+                match.getDate(),
+                match.getTime(),
+                match.getLocation(),
+                match.getAddress(),
+                match.getStatus(),
+                fixtureSide(home, match.getHomeScore()),
+                fixtureSide(away, match.getAwayScore())
+        );
+    }
+
+    private static FixtureMatchResponse.FixtureSide fixtureSide(Enrollment team, Integer score) {
+        return team == null ? null : new FixtureMatchResponse.FixtureSide(
+                team.getTeamId(), team.getInstitutionId(), team.getTeamName(), team.getTeamLogoUrl(), score);
     }
 
     private static TeamScore teamScore(Enrollment team, Integer score) {
