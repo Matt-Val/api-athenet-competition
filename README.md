@@ -33,7 +33,7 @@ Microservicio de competencias de <strong>Athenet</strong>: administra competenci
 * **Autenticación:** OAuth2 Resource Server con JWT de Microsoft Entra ID.
 * **Validación:** Bean Validation y reglas de negocio en servicios.
 * **Build:** Maven mediante wrapper `./mvnw`.
-* **Contenedores y despliegue:** Docker multi-stage y GitHub Actions con publicación en GHCR y despliegue manual por SSH.
+* **Contenedores y despliegue:** Docker multi-stage y GitHub Actions con publicación en Docker Hub y despliegue manual por SSH.
 
 ### ms-competition
 
@@ -268,10 +268,10 @@ Dentro del contenedor, `localhost` apunta al propio contenedor: usar direcciones
 El workflow `.github/workflows/ci-cd.yml` tiene tres etapas:
 
 1. **Test:** ejecuta `./mvnw verify` en pull requests y pushes a `main` o `develop`.
-2. **Build & Push:** publica en GHCR una imagen etiquetada con el SHA del commit, después de pasar las pruebas y fuera de pull requests.
+2. **Build & Push:** publica en Docker Hub una imagen etiquetada con el SHA del commit, después de pasar las pruebas y fuera de pull requests.
 3. **Deploy manual:** desde **Actions → Competition CI/CD → Run workflow**, seleccionando `main` o `develop`, despliega por SSH al EC2 usando el environment `production`. Un push publica la imagen, pero no despliega. El environment debe permitir la rama seleccionada.
 
-Configurar los secrets de GitHub `EC2_APP_HOST`, `EC2_SSH_USER` y `EC2_SSH_KEY`. Preparar Docker en el EC2 y `/opt/athenet/competition.env` con las variables reales, legible por el usuario de despliegue y con permisos restringidos. Permitir acceso al puerto 8082 desde los clientes correspondientes. Para imágenes privadas, conceder al workflow acceso de lectura al paquete GHCR.
+Configurar los secrets de GitHub `EC2_APP_HOST`, `EC2_SSH_USER` y `EC2_SSH_KEY`. Preparar Docker en el EC2 y `/opt/athenet/competition.env` con las variables reales, legible por el usuario de despliegue y con permisos restringidos. Permitir acceso al puerto 8082 desde los clientes correspondientes. Configurar la variable `DOCKERHUB_USERNAME` y el secret `DOCKERHUB_TOKEN` para publicar y descargar imágenes.
 
 El despliegue reemplaza el contenedor existente y produce una breve interrupción. No verifica automáticamente el flujo entre servicios.
 

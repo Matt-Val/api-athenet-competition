@@ -66,3 +66,7 @@ Configurar PostgreSQL, URL de Instituciones, JWT de Entra y RabbitMQ, incluido `
 Con JWT reales y BFF, el usuario confirmó el encuentro 1: se publicó la revisión de agenda 1 y Eventos creó `PARTIDO-1`. Después inició copa y encuentro, registró 2–1 y corrigió a 1–3. Se verificaron ambas revisiones de resultado publicadas, entregas SENT y sustitución del ranking manteniendo un partido por equipo.
 
 La aplicación de migraciones sobre RDS, caída del broker durante una escritura, pruebas entre varias instancias, casos negativos exhaustivos de permisos y reprogramación/cancelación conectadas quedaron fuera del cierre mínimo. No se desplegó en AWS.
+
+## Docker Hub — 2026-10-19
+
+Se preparó la publicación de imágenes en Docker Hub y el despliegue por SSH usando la etiqueta SHA. Las credenciales del registro se configuran mediante `DOCKERHUB_USERNAME` (variable) y `DOCKERHUB_TOKEN` (secret). La preparación no incluye publicación ni despliegue ejecutados.
