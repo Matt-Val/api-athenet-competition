@@ -94,7 +94,7 @@ public class CompetitionService {
      */
     @Transactional
     public Competition update(Long id, Competition changes) {
-        Competition competition = findEntityById(id);
+        Competition competition = repositoryForUpdate(id);
 
         if (competition.getType() != changes.getType()) {
             throw new ConflictException("No se puede cambiar el tipo de una competencia");
@@ -121,7 +121,9 @@ public class CompetitionService {
         competition.setDrawPoints(changes.getDrawPoints());
         competition.setLossPoints(changes.getLossPoints());
 
-        return competitionRepository.save(competition);
+        Competition saved = competitionRepository.save(competition);
+        matchService.refreshConfirmedSchedules(saved);
+        return saved;
     }
 
     /*
@@ -131,7 +133,7 @@ public class CompetitionService {
      */
     @Transactional
     public Competition changeStatus(Long id, CompetitionStatus newStatus) {
-        Competition competition = findEntityById(id);
+        Competition competition = repositoryForUpdate(id);
         CompetitionStatus current = competition.getStatus();
 
         boolean validTransition = (current == CompetitionStatus.DRAFT && newStatus == CompetitionStatus.IN_PROGRESS)
@@ -161,7 +163,7 @@ public class CompetitionService {
      */
     @Transactional
     public void delete(Long id) {
-        Competition competition = findEntityById(id);
+        Competition competition = repositoryForUpdate(id);
 
         if (competition.getStatus() != CompetitionStatus.DRAFT) {
             throw new ConflictException("Solo se puede eliminar una competencia en estado DRAFT");
@@ -169,6 +171,11 @@ public class CompetitionService {
 
         matchService.deleteByCompetition(id);
         competitionRepository.delete(competition);
+    }
+
+    private Competition repositoryForUpdate(Long id) {
+        return competitionRepository.findLockedById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Competencia no encontrada"));
     }
 
     private Competition findEntityById(Long id) {

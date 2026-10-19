@@ -20,7 +20,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class ResultEventPublisher {
 
-    private final AfterCommitSender sender;
+    private final OutboxEventWriter sender;
 
     public void publish(Match match, Competition competition, Enrollment home, Enrollment away) {
         ResultRegisteredMessage data = new ResultRegisteredMessage(
@@ -39,7 +39,8 @@ public class ResultEventPublisher {
                 match.getHomeScore(),
                 match.getAwayScore(),
                 new ResultRegisteredMessage.Points(
-                        competition.getWinPoints(), competition.getDrawPoints(), competition.getLossPoints()));
+                        competition.getWinPoints(), competition.getDrawPoints(), competition.getLossPoints()),
+                match.getDate() == null ? null : match.getDate().toString());
 
         ResultRegisteredEnvelope envelope = new ResultRegisteredEnvelope(
                 UUID.randomUUID().toString(),
@@ -47,6 +48,6 @@ public class ResultEventPublisher {
                 RabbitConfig.RESULT_REGISTERED_ROUTING_KEY,
                 data);
 
-        sender.send(RabbitConfig.RESULT_REGISTERED_ROUTING_KEY, envelope);
+        sender.enqueue(RabbitConfig.RESULT_REGISTERED_ROUTING_KEY, match.getId(), match.getVersion(), envelope);
     }
 }

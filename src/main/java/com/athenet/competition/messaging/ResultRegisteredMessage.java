@@ -19,7 +19,8 @@ public record ResultRegisteredMessage(
     Long awayInstitutionId,
     Integer homeScore,
     Integer awayScore,
-    Points points
+    Points points,
+    String matchDate
 ) {
     public record Points(int win, int draw, int loss) {
     }

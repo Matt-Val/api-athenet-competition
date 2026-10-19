@@ -145,6 +145,11 @@ public class AdminCompetitionController {
         Programar un partido (fecha, hora, lugar, delegado) y sortear los equipos de octavos.
         El resultado no se toca acá: solo lo carga el delegado asignado.
     */
+    @PostMapping("/{id}/matches/{matchId}/confirm")
+    public ResponseEntity<MatchResponse> confirmMatch(@PathVariable Long id, @PathVariable Long matchId) {
+        return ResponseEntity.ok(matchMapper.toResponse(matchService.confirmSchedule(id, matchId)));
+    }
+
     @PutMapping("/{id}/matches/{matchId}")
     public ResponseEntity<MatchResponse> updateMatch(@PathVariable Long id, @PathVariable Long matchId,
             @Valid @RequestBody MatchUpdateRequest request) {

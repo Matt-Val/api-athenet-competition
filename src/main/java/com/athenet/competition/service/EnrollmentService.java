@@ -36,7 +36,7 @@ public class EnrollmentService {
     */
     @Transactional
     public Enrollment enroll(Long competitionId, Long teamId) {
-        Competition competition = competitionRepository.findById(competitionId)
+        Competition competition = competitionRepository.findLockedById(competitionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Competencia con id " + competitionId + " no fue encontrada"));
 
         if (enrollmentRepository.existsByCompetitionIdAndTeamId(competitionId, teamId)) {
@@ -72,6 +72,8 @@ public class EnrollmentService {
     */
     @Transactional
     public void unenroll(Long competitionId, Long teamId) {
+        competitionRepository.findLockedById(competitionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Competencia no encontrada"));
         Enrollment enrollment = enrollmentRepository.findByCompetitionIdAndTeamId(competitionId, teamId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "El equipo " + teamId + " no está inscrito en la competencia " + competitionId));

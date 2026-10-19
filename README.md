@@ -33,7 +33,7 @@ Microservicio de competencias de <strong>Athenet</strong>: administra competenci
 * **Autenticación:** OAuth2 Resource Server con JWT de Microsoft Entra ID.
 * **Validación:** Bean Validation y reglas de negocio en servicios.
 * **Build:** Maven mediante wrapper `./mvnw`.
-* **Contenedores y despliegue:** Docker multi-stage y GitHub Actions con publicación en GHCR y despliegue manual por SSH.
+* **Contenedores y despliegue:** Docker multi-stage y GitHub Actions con publicación en Docker Hub y despliegue manual por SSH.
 
 ### ms-competition
 
@@ -103,7 +103,8 @@ Competencia solo publica; cada consumidor declara su cola, binding y DLQ. Detall
 
 | Routing key | Dirección | Cola | Efecto |
 | :--- | :--- | :--- | :--- |
-| `resultado.registrado` | Publica | Declarada por Notificaciones | Notificaciones avisa el resultado |
+| `resultado.registrado` | Publica | Colas independientes de Notificaciones y Ranking | Notificaciones avisa; Ranking recalcula |
+| `partido.actualizado` | Publica | `eventos.partidos` | Eventos mantiene la copia de agenda |
 
 El exchange es `athenet.topic`. El resultado se publica cada vez que el delegado finaliza o corrige un partido. `version` es 1 al finalizar y sube en cada corrección: el consumidor procesa el mensaje solo si su `version` es mayor que la última guardada para ese `matchId`. Los nombres y la ronda van listos para mostrar:
 
@@ -121,6 +122,7 @@ El exchange es `athenet.topic`. El resultado se publica cada vez que el delegado
     "homeTeamName": "Halcones", "awayTeamName": "Pumas",
     "homeInstitutionId": 3, "awayInstitutionId": 7,
     "homeScore": 2, "awayScore": 1,
+    "matchDate": "2026-10-12",
     "points": { "win": 3, "draw": 1, "loss": 0 }
   }
 }
@@ -177,15 +179,11 @@ INSTITUTION_API_URL=http://<host-instituciones>:8080
 
 Nunca subir `.env`, `application-local.properties`, tokens o claves privadas al repositorio.
 
-#### Migración de la llave (una vez)
+#### Migraciones de integración
 
-El esquema lo crea Hibernate (`ddl-auto=update`), que no borra columnas ni quita `NOT NULL`. Tras el cambio del modelo de partidos (llave de la copa, delegado), la tabla vieja debe borrarse una vez antes de arrancar, en local y en RDS:
+La aplicación conserva `spring.jpa.hibernate.ddl-auto=update`; Hibernate creó la tabla `domain_outbox` y los campos de agenda en el esquema vacío de integración. Los scripts SQL preparados en `db/migration` quedan fuera de los commits por decisión del usuario. El código sigue necesitando esas estructuras: revisar su existencia y compatibilidad antes de desplegar sobre una base existente. No borrar tablas ni colas para instalar la integración. El director debe completar el término y confirmar los encuentros antes de iniciarlos.
 
-```sql
-DROP TABLE IF EXISTS match;
-```
-
-En el broker también se pueden borrar, desde la UI de administración, las colas `competencia.eventos` y `eventos.partidos` con sus DLQ: ya no tienen consumidor.
+`eventos.partidos` vuelve a tener consumidor en Eventos. Verificar colas/bindings y versiones compatibles antes de activar publicaciones.
 
 #### 3. Servidor de desarrollo
 
@@ -226,13 +224,15 @@ Content-Type: application/json
 
 {
   "date": "2026-11-08", "time": "18:00",
+  "endDate": "2026-11-08", "endTime": "20:00",
   "location": "Santiago, Chile", "address": "Av. Grecia 2001",
   "homeTeamId": 1, "awayTeamId": 2,
   "delegateOid": "<oid-del-delegado>", "delegateDisplayName": "Delegado de prueba"
 }
 ```
 
-4. `PATCH .../{id}/status` con `{ "status": "IN_PROGRESS" }`.
+4. Completar `endDate` y `endTime` de cada encuentro y confirmar con `POST .../{id}/matches/{matchId}/confirm`.
+5. `PATCH .../{id}/status` con `{ "status": "IN_PROGRESS" }`.
 
 Con un token de rol `delegate` cuyo `oid` sea el del partido:
 
@@ -268,10 +268,10 @@ Dentro del contenedor, `localhost` apunta al propio contenedor: usar direcciones
 El workflow `.github/workflows/ci-cd.yml` tiene tres etapas:
 
 1. **Test:** ejecuta `./mvnw verify` en pull requests y pushes a `main` o `develop`.
-2. **Build & Push:** publica en GHCR una imagen etiquetada con el SHA del commit, después de pasar las pruebas y fuera de pull requests.
+2. **Build & Push:** publica en Docker Hub una imagen etiquetada con el SHA del commit, después de pasar las pruebas y fuera de pull requests.
 3. **Deploy manual:** desde **Actions → Competition CI/CD → Run workflow**, seleccionando `main` o `develop`, despliega por SSH al EC2 usando el environment `production`. Un push publica la imagen, pero no despliega. El environment debe permitir la rama seleccionada.
 
-Configurar los secrets de GitHub `EC2_APP_HOST`, `EC2_SSH_USER` y `EC2_SSH_KEY`. Preparar Docker en el EC2 y `/opt/athenet/competition.env` con las variables reales, legible por el usuario de despliegue y con permisos restringidos. Permitir acceso al puerto 8082 desde los clientes correspondientes. Para imágenes privadas, conceder al workflow acceso de lectura al paquete GHCR.
+Configurar los secrets de GitHub `EC2_APP_HOST`, `EC2_SSH_USER` y `EC2_SSH_KEY`. Preparar Docker en el EC2 y `/opt/athenet/competition.env` con las variables reales, legible por el usuario de despliegue y con permisos restringidos. Permitir acceso al puerto 8082 desde los clientes correspondientes. Configurar la variable `DOCKERHUB_USERNAME` y el secret `DOCKERHUB_TOKEN` para publicar y descargar imágenes.
 
 El despliegue reemplaza el contenedor existente y produce una breve interrupción. No verifica automáticamente el flujo entre servicios.
 
@@ -293,7 +293,13 @@ src/main/java/com/athenet/competition/
 
 ### Estado de Verificación
 
-* **Pruebas automatizadas:** llave de 15 partidos, sorteo de octavos, avance del ganador, correcciones, empates, delegado asignado, inicio y fin de la copa, seguridad HTTP por rol, JSON publicado (`resultado.registrado`) y envío después del commit.
+* **Pruebas automatizadas:** llave de 15 partidos, sorteo de octavos, avance del ganador, correcciones, empates, delegado asignado, inicio y fin de la copa, seguridad HTTP por rol, JSON publicado (`resultado.registrado`) y escritura de outbox.
 * **Pendiente en el entorno del equipo:** consumo real por Notificaciones y despliegue EC2.
 
-La BD y RabbitMQ no comparten una transacción: los mensajes se envían después del commit, así que un cambio revertido nunca se publica. Si el broker falla después del commit, el cambio queda guardado, el error se registra en el log y el mensaje se pierde. No se implementó outbox ni recuperación de publicaciones.
+El resultado y su mensaje pendiente se guardan en una misma transacción PostgreSQL. La outbox publica con confirm/return y reintentos, conservando ID, fecha y JSON originales. Un envío incierto puede repetirse; los consumidores deduplican por versión. El mismo marcador guardado otra vez no crea una revisión nueva.
+
+La agenda se confirma por encuentro con `POST /api/admin/competitions/{id}/matches/{matchId}/confirm`, separadamente del inicio de copa. Programar requiere enviar `endDate` y `endTime` para poder confirmar. El delegado solo inicia encuentros confirmados. Una modificación de agenda o de participantes retira la copia anterior y exige reconfirmación; eliminar una copa borrador retira sus copias confirmadas. `partido.actualizado` lleva su propia `scheduleVersion` y un estado `PUBLISHED` o `CANCELLED`, sin reutilizar la versión del resultado.
+
+`RABBITMQ_VHOST` selecciona el vhost común. `app.messaging.outbox-enabled=false` detiene temporalmente el publicador, conservando pendientes. No eliminar el historial de agenda de la outbox mientras se necesite cancelar/reconfirmar encuentros: conserva los snapshots y revisiones.
+
+Los resultados, transacciones JPA, confirmaciones reales del broker y el recorrido AWS deben verificarse en un entorno conectado. La existencia de pruebas unitarias no acredita por sí sola esa integración.

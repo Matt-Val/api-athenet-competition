@@ -16,12 +16,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 class ResultEventPublisherTest {
     @Test
     void publishesEnvelopeWithResultAndRankingData() throws Exception {
-        RabbitTemplate template = mock(RabbitTemplate.class);
+        OutboxEventWriter writer = mock(OutboxEventWriter.class);
         Match match = new Match();
         match.setId(31L);
         match.setCompetitionId(4L);
         match.setRound(MatchRound.QUARTER_FINAL);
         match.setVersion(2);
+        match.setDate(java.time.LocalDate.of(2026, 10, 18));
         match.setHomeTeamId(12L);
         match.setAwayTeamId(15L);
         match.setHomeScore(2);
@@ -36,17 +37,17 @@ class ResultEventPublisherTest {
         away.setTeamName("Pumas");
         away.setInstitutionId(7L);
 
-        new ResultEventPublisher(new AfterCommitSender(template)).publish(match, competition, home, away);
+        new ResultEventPublisher(writer).publish(match, competition, home, away);
 
         var captor = ArgumentCaptor.forClass(ResultRegisteredEnvelope.class);
-        verify(template).convertAndSend(eq(RabbitConfig.EXCHANGE),
-                eq("resultado.registrado"), captor.capture());
+        verify(writer).enqueue(eq("resultado.registrado"), eq(31L), eq(2), captor.capture());
         var json = new ObjectMapper().readTree(new ObjectMapper().writeValueAsBytes(captor.getValue()));
         assertEquals("resultado.registrado", json.get("type").asText());
         assertNotNull(json.get("messageId"));
         assertNotNull(json.get("occurredAt"));
         var data = json.get("data");
         assertEquals(31, data.get("matchId").asLong());
+        assertEquals("2026-10-18", data.get("matchDate").asText());
         assertEquals(4, data.get("competitionId").asLong());
         assertEquals("Copa Instituciones de Chile 2026", data.get("competitionName").asText());
         assertEquals(1, data.get("sportId").asLong());

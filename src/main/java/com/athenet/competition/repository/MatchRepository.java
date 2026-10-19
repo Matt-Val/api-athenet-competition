@@ -12,6 +12,10 @@ import com.athenet.competition.model.enums.MatchRound;
 
 public interface MatchRepository extends JpaRepository<Match, Long> {
 
+    // Proyección escalar: no cargar el encuentro al persistence context antes del lock de la copa.
+    @Query("SELECT m.competitionId FROM Match m WHERE m.id = :id")
+    Optional<Long> findCompetitionIdById(@Param("id") Long id);
+
     // Fixture completo de una competencia
     List<Match> findByCompetitionId(Long competitionId);
 

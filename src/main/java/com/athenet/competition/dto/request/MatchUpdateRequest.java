@@ -34,6 +34,8 @@ public record MatchUpdateRequest(
     String delegateOid,
 
     @Size(max = 256, message = "El nombre del delegado no puede superar los 256 caracteres")
-    String delegateDisplayName
+    String delegateDisplayName,
+    LocalDate endDate,
+    @JsonFormat(pattern = "HH:mm") LocalTime endTime
 ) {
 }
