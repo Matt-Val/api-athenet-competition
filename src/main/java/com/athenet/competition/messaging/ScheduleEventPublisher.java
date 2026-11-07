@@ -19,10 +19,10 @@ public class ScheduleEventPublisher {
             String eventDate, String startTime, String endDate, String endTime,
             String location, String address, Long homeTeamId, Long awayTeamId,
             String delegateOid, String delegateDisplayName, String status) {
-        Data cancelled(int revision) {
+        Data withStatus(String status, int revision) {
             return new Data(matchId,competitionId,competitionName,sportId,revision,title,description,coverImage,
                     eventDate,startTime,endDate,endTime,location,address,homeTeamId,awayTeamId,delegateOid,
-                    delegateDisplayName,"CANCELLED");
+                    delegateDisplayName,status);
         }
     }
     public record Envelope(String messageId, String occurredAt, String type, Data data) {}
@@ -37,7 +37,13 @@ public class ScheduleEventPublisher {
         outbox.enqueue(ROUTING_KEY,match.getId(),match.getScheduleVersion(),
                 new Envelope(UUID.randomUUID().toString(),Instant.now().toString(),ROUTING_KEY,data));
     }
-    public void cancel(Match match) {
+    public void cancel(Match match) { withdraw(match, "CANCELLED"); }
+    
+    public void finish(Match match) { withdraw(match, "FINISHED"); }
+
+    // Reenvía el último snapshot confirmado con otro estado y deja el encuentro sin agenda
+    // confirmada, para que refreshConfirmedSchedules no vuelva a publicarlo
+    private void withdraw(Match match, String status) {
         if (!match.isScheduleConfirmed()) return;
         var previous = messages.findByRoutingKeyAndAggregateIdAndRevision(ROUTING_KEY,match.getId(),match.getScheduleVersion())
                 .orElseThrow(() -> new IllegalStateException("No existe el snapshot de agenda confirmado"));
@@ -47,7 +53,7 @@ public class ScheduleEventPublisher {
             match.setScheduleConfirmed(false);
             outbox.enqueue(ROUTING_KEY,match.getId(),match.getScheduleVersion(),
                     new Envelope(UUID.randomUUID().toString(),Instant.now().toString(),ROUTING_KEY,
-                            old.data().cancelled(match.getScheduleVersion())));
+                            old.data().withStatus(status,match.getScheduleVersion())));
         } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
             throw new IllegalStateException("No se pudo recuperar el snapshot de agenda",ex);
         }
