@@ -121,6 +121,7 @@ class MatchServiceTest {
         assertEquals(1, match.getVersion());
         assertEquals(12L, next.getHomeTeamId());
         verify(resultPublisher).publish(match, competition, home, away);
+        verify(schedulePublisher).finish(match);
     }
 
     @Test

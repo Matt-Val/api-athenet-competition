@@ -68,6 +68,37 @@ class CompetitionServiceTest {
                 .map(CompetitionService.TeamCompetition::competition).toList());
     }
 
+    Competition published(long id, CompetitionStatus status, LocalDate startDate) {
+        Competition competition = new Competition();
+        competition.setId(id);
+        competition.setStatus(status);
+        competition.setStartDate(startDate);
+        return competition;
+    }
+
+    // findCurrent no filtra DRAFT por su cuenta: eso ya lo hace el SQL de findPublic.
+    @Test void currentCompetitionIsTheOneInProgress() {
+        Competition running = published(5L, CompetitionStatus.IN_PROGRESS, LocalDate.of(2026, 10, 1));
+        when(repository.findPublic(null, CompetitionStatus.IN_PROGRESS)).thenReturn(List.of(running));
+
+        assertEquals(Optional.of(running), service.findCurrent());
+        // Si hay una en curso ni siquiera consulta las terminadas
+        verify(repository, never()).findPublic(null, CompetitionStatus.FINISHED);
+    }
+
+    @Test void withoutOneInProgressCurrentIsTheLatestFinished() {
+        Competition older = published(4L, CompetitionStatus.FINISHED, LocalDate.of(2026, 6, 1));
+        Competition newer = published(5L, CompetitionStatus.FINISHED, LocalDate.of(2026, 10, 1));
+        Competition undated = published(6L, CompetitionStatus.FINISHED, null);
+        when(repository.findPublic(null, CompetitionStatus.FINISHED)).thenReturn(List.of(older, undated, newer));
+
+        assertEquals(Optional.of(newer), service.findCurrent());
+    }
+
+    @Test void withoutPublishedCompetitionsThereIsNoCurrentOne() {
+        assertEquals(Optional.empty(), service.findCurrent());
+    }
+
     @Test void dependencyFailureDoesNotCreateCompetition() {
         when(institutions.getSport(1L)).thenThrow(new UpstreamServiceException("offline"));
         assertThrows(UpstreamServiceException.class, () -> service.create(cup()));

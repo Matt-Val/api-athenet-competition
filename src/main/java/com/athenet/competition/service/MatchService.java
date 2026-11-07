@@ -309,6 +309,7 @@ public class MatchService {
         match.setAwayScore(awayScore);
         match.setStatus(MatchStatus.FINISHED);
         match.setVersion(match.getVersion() + 1);
+        scheduleEventPublisher.finish(match);
 
         Long winner = winnerOf(match);
         if (!winner.equals(previousWinner)) {
