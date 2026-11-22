@@ -64,8 +64,9 @@ Competencia es la dueña de los encuentros y la fuente de verdad de los resultad
 | `GET` | `/api/admin/competitions/{id}/matches` | `DIRECTOR` | Llave ordenada por ronda y posición |
 | `PUT` | `/api/admin/competitions/{id}/matches/{matchId}` | `DIRECTOR` | Programar partido y sortear octavos |
 | `GET` | `/api/delegate/matches` | `DELEGATE` | Partidos asignados en competencias iniciadas |
-| `POST` | `/api/delegate/matches/{matchId}/start` | `DELEGATE` | Iniciar el partido |
-| `PUT` | `/api/delegate/matches/{matchId}/result` | `DELEGATE` | Finalizar o corregir el resultado |
+| `POST` | `/api/delegate/matches/{matchId}/start` | `DELEGATE` | Iniciar el partido (publica `INICIADO` en Kafka) |
+| `POST` | `/api/delegate/matches/{matchId}/score` | `DELEGATE` | Actualizar marcador en vivo (`PUNTO` en Kafka, sin escribir en BD; `202`) |
+| `PUT` | `/api/delegate/matches/{matchId}/result` | `DELEGATE` | Finalizar o corregir el resultado (publica `FINALIZADO` en Kafka y `resultado.registrado` en RabbitMQ) |
 
 No se permite cambiar el tipo, ni el deporte si hay equipos inscritos. Las inscripciones comprueban que el equipo exista, esté activo y pertenezca al mismo deporte, y guardan una copia de su nombre, logo e institución.
 
@@ -160,6 +161,11 @@ Usar `.env.example` como plantilla de las variables. `DB_PASSWORD` y `RABBITMQ_P
 | `RABBITMQ_HOST`, `RABBITMQ_PORT` | Host y puerto del broker |
 | `RABBITMQ_USER`, `RABBITMQ_PASSWORD` | Credenciales del broker |
 | `RABBITMQ_SSL` | `false` para el broker EC2 actual |
+| `KAFKA_BOOTSTRAP_SERVERS` | Broker Kafka para marcador en vivo, por defecto `localhost:9092` |
+| `KAFKA_TOPIC_MARCADOR` | Topic de marcador en vivo, por defecto `marcador` |
+| `KAFKA_TOPIC_REPLICAS` | Factor de replicación del topic, por defecto `1` |
+| `KAFKA_SEND_TIMEOUT` | Timeout de confirmación para `POST /score`, por defecto `3s` |
+| `KAFKA_TEAM_NAMES_TTL` | TTL de la caché en memoria de nombres de equipo, por defecto `10m` |
 | `SERVER_PORT` | Puerto HTTP, por defecto `8082` |
 | `SHOW_SQL` | Mostrar SQL, por defecto `false` |
 

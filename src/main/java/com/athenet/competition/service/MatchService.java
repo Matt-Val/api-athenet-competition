@@ -11,13 +11,17 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.athenet.competition.exception.ConflictException;
 import com.athenet.competition.exception.ForbiddenException;
 import com.athenet.competition.exception.ResourceNotFoundException;
+import com.athenet.competition.messaging.MatchTeamNames;
 import com.athenet.competition.messaging.ResultEventPublisher;
 import com.athenet.competition.messaging.ScheduleEventPublisher;
+import com.athenet.competition.messaging.ScoreEvent;
+import com.athenet.competition.messaging.ScoreEventPublisher;
 import com.athenet.competition.model.Competition;
 import com.athenet.competition.model.Enrollment;
 import com.athenet.competition.model.Match;
@@ -31,7 +35,9 @@ import com.athenet.competition.repository.EnrollmentRepository;
 import com.athenet.competition.repository.MatchRepository;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -51,6 +57,8 @@ public class MatchService {
     private final EnrollmentRepository enrollmentRepository;
     private final ResultEventPublisher resultEventPublisher;
     private final ScheduleEventPublisher scheduleEventPublisher;
+    private final ScoreEventPublisher scoreEventPublisher;
+    private final MatchTeamNames matchTeamNames;
 
     public Match getById(Long id) {
         return findEntityById(id);
@@ -275,7 +283,32 @@ public class MatchService {
         }
 
         match.setStatus(MatchStatus.IN_PROGRESS);
-        return matchRepository.save(match);
+        Match saved = matchRepository.save(match);
+        publishStartedLiveEvent(saved);
+        return saved;
+    }
+
+    /*
+        POST /api/delegate/matches/{id}/score: publica el marcador en vivo en Kafka sin
+        escribir en BD. Solo el delegado asignado y mientras el partido está en curso.
+    */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public void publishLiveScore(Long matchId, String delegateOid, int homeScore, int awayScore) {
+        if (homeScore < 0 || awayScore < 0) {
+            throw new ConflictException("El marcador no puede ser negativo");
+        }
+        Match match = findDelegateMatch(matchId, delegateOid);
+        if (match.getStatus() != MatchStatus.IN_PROGRESS) {
+            throw new ConflictException("Solo se puede actualizar el marcador de un partido en curso");
+        }
+        MatchTeamNames.Names names = matchTeamNames.getOrLoad(match.getId(), () -> resolveTeamNames(match));
+        scoreEventPublisher.publishPoint(new ScoreEvent(
+                match.getId(),
+                names.home(),
+                names.away(),
+                homeScore,
+                awayScore,
+                ScoreEvent.TIPO_PUNTO));
     }
 
     /*
@@ -384,6 +417,45 @@ public class MatchService {
         Enrollment away = findEnrollment(match.getCompetitionId(), match.getAwayTeamId());
 
         resultEventPublisher.publish(match, competition, home, away);
+        matchTeamNames.evict(match.getId());
+        publishLiveScoreAfterCommitSafe(new ScoreEvent(
+                match.getId(),
+                home.getTeamName(),
+                away.getTeamName(),
+                match.getHomeScore(),
+                match.getAwayScore(),
+                ScoreEvent.TIPO_FINALIZADO));
+    }
+
+    private void publishStartedLiveEvent(Match match) {
+        try {
+            MatchTeamNames.Names names = resolveTeamNames(match);
+            matchTeamNames.put(match.getId(), names.home(), names.away());
+            publishLiveScoreAfterCommitSafe(new ScoreEvent(
+                    match.getId(),
+                    names.home(),
+                    names.away(),
+                    0,
+                    0,
+                    ScoreEvent.TIPO_INICIADO));
+        } catch (Exception ex) {
+            log.warn("No se pudo preparar evento INICIADO para partido {}: {}", match.getId(), ex.getMessage());
+        }
+    }
+
+    private void publishLiveScoreAfterCommitSafe(ScoreEvent event) {
+        try {
+            scoreEventPublisher.publishAfterCommit(event);
+        } catch (Exception ex) {
+            log.warn("No se pudo agendar evento {} del partido {} en Kafka: {}",
+                    event.tipo(), event.idEncuentro(), ex.getMessage());
+        }
+    }
+
+    private MatchTeamNames.Names resolveTeamNames(Match match) {
+        Enrollment home = findEnrollment(match.getCompetitionId(), match.getHomeTeamId());
+        Enrollment away = findEnrollment(match.getCompetitionId(), match.getAwayTeamId());
+        return new MatchTeamNames.Names(home.getTeamName(), away.getTeamName());
     }
 
     private void lockMatchCompetition(Long matchId) {
