@@ -7,6 +7,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 
+import com.athenet.competition.dto.request.LiveScoreRequest;
 import com.athenet.competition.dto.request.MatchResultRequest;
 import com.athenet.competition.dto.response.MatchResponse;
 import com.athenet.competition.mapper.MatchMapper;
@@ -39,6 +40,16 @@ public class DelegateMatchController {
     @PostMapping("/{matchId}/start")
     public ResponseEntity<MatchResponse> start(@PathVariable Long matchId, @AuthenticationPrincipal Jwt jwt) {
         return ResponseEntity.ok(matchMapper.toResponse(matchService.start(matchId, oid(jwt))));
+    }
+
+    /*
+        Actualiza el marcador en vivo sin escribir en BD: publica PUNTO en Kafka y responde 202.
+    */
+    @PostMapping("/{matchId}/score")
+    public ResponseEntity<Void> publishLiveScore(@PathVariable Long matchId, @AuthenticationPrincipal Jwt jwt,
+            @Valid @RequestBody LiveScoreRequest request) {
+        matchService.publishLiveScore(matchId, oid(jwt), request.homeScore(), request.awayScore());
+        return ResponseEntity.accepted().build();
     }
 
     /*
