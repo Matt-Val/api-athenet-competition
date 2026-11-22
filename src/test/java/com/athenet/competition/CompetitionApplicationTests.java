@@ -10,6 +10,7 @@ import com.athenet.competition.repository.*;
     "spring.autoconfigure.exclude=org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration,org.springframework.boot.hibernate.autoconfigure.HibernateJpaAutoConfiguration",
     "spring.rabbitmq.listener.simple.auto-startup=false",
     "spring.rabbitmq.dynamic=false",
+    "spring.kafka.admin.auto-create=false",
     "app.messaging.outbox-enabled=false",
     "DB_PASSWORD=test-only",
     "RABBITMQ_PASSWORD=test-only"

@@ -3,6 +3,7 @@ package com.athenet.competition.service;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -66,6 +67,22 @@ public class CompetitionService {
     // GET /api/public/competencias?deporteId&estado — nunca incluye borradores.
     public List<Competition> listForPublic(Long sportId, CompetitionStatus status) {
         return competitionRepository.findPublic(sportId, status);
+    }
+
+    /*
+        La competencia vigente: la que está en curso o, si no hay ninguna, la última que
+        terminó. Por regla de negocio [2026-11-07] nunca hay dos competencias a la vez. 
+     */
+    public Optional<Competition> findCurrent() {
+        return latestWithStatus(CompetitionStatus.IN_PROGRESS)
+                .or(() -> latestWithStatus(CompetitionStatus.FINISHED));
+    }
+
+    // Competencia vigente: (startDate es nullable, así que los nulos pierden) y desempate por id.
+    private Optional<Competition> latestWithStatus(CompetitionStatus status) {
+        return competitionRepository.findPublic(null, status).stream()
+                .max(Comparator.comparing(Competition::getStartDate, Comparator.nullsFirst(Comparator.naturalOrder()))
+                .thenComparing(Competition::getId));
     }
 
     public record TeamCompetition(Competition competition, TeamProgress progress) {

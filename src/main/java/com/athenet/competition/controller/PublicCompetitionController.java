@@ -61,6 +61,21 @@ public class PublicCompetitionController {
     }
 
     /*
+        Llave de competencia vigente: la que está en curso o, si no hay ninguna, la ultima que terminó.
+        Devuelve [] si todavía no hay ninguna competencia publicada.
+    */
+    @GetMapping("/current/fixture")
+    public ResponseEntity<List<FixtureMatchResponse>> listCurrentFixture() {
+        List<FixtureMatchResponse> response = competitionService.findCurrent()
+                .map(competition -> matchService.listFixture(competition.getId()).stream()
+                        .map(fixture -> matchMapper.toFixtureResponse(
+                                fixture.match(), fixture.competition(), fixture.home(), fixture.away()))
+                        .toList())
+                .orElseGet(List::of);
+        return ResponseEntity.ok(response);
+    }
+
+    /*
         Devuelve la competencia, sus equipos y sus partidos.
         Nunca incluye borradores (DRAFT).
         Solo incluye competencias activas y finalizadas.

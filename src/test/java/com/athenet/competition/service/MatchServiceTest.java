@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
@@ -20,8 +21,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import com.athenet.competition.exception.ConflictException;
 import com.athenet.competition.exception.ForbiddenException;
 import com.athenet.competition.exception.ResourceNotFoundException;
+import com.athenet.competition.exception.UpstreamServiceException;
+import com.athenet.competition.messaging.MatchTeamNames;
 import com.athenet.competition.messaging.ResultEventPublisher;
 import com.athenet.competition.messaging.ScheduleEventPublisher;
+import com.athenet.competition.messaging.ScoreEvent;
+import com.athenet.competition.messaging.ScoreEventPublisher;
 import com.athenet.competition.model.*;
 import com.athenet.competition.model.enums.*;
 import com.athenet.competition.repository.*;
@@ -35,6 +40,8 @@ class MatchServiceTest {
     @Mock EnrollmentRepository enrollments;
     @Mock ResultEventPublisher resultPublisher;
     @Mock ScheduleEventPublisher schedulePublisher;
+    @Mock ScoreEventPublisher scorePublisher;
+    MatchTeamNames teamNames;
     MatchService service;
     Competition competition;
     // Octavos, posición 3: su ganador pasa a cuartos, posición 2, de local
@@ -45,7 +52,9 @@ class MatchServiceTest {
 
     @BeforeEach
     void setup() {
-        service = new MatchService(matches, competitions, enrollments, resultPublisher, schedulePublisher);
+        teamNames = new MatchTeamNames(Duration.ofMinutes(10));
+        service = new MatchService(matches, competitions, enrollments, resultPublisher, schedulePublisher,
+                scorePublisher, teamNames);
         competition = new Competition();
         competition.setId(4L);
         competition.setCompetitionImg("https://example.test/cup.png");
@@ -55,7 +64,9 @@ class MatchServiceTest {
         match.setStatus(MatchStatus.IN_PROGRESS);
         next = match(40L, MatchRound.QUARTER_FINAL, 2, null, null);
         home = new Enrollment();
+        home.setTeamName("USACH");
         away = new Enrollment();
+        away.setTeamName("U. de Chile");
         lenient().when(matches.findById(31L)).thenReturn(Optional.of(match));
         lenient().when(matches.findById(40L)).thenReturn(Optional.of(next));
         lenient().when(competitions.findLockedById(4L)).thenReturn(Optional.of(competition));
@@ -121,6 +132,7 @@ class MatchServiceTest {
         assertEquals(1, match.getVersion());
         assertEquals(12L, next.getHomeTeamId());
         verify(resultPublisher).publish(match, competition, home, away);
+        verify(schedulePublisher).finish(match);
     }
 
     @Test
@@ -357,6 +369,77 @@ class MatchServiceTest {
         assertEquals(new TeamProgress(MatchRound.QUARTER_FINAL, TeamOutcome.ACTIVE, 1, 1, 0), progress.get(4L));
         assertEquals(new TeamProgress(MatchRound.QUARTER_FINAL, TeamOutcome.ELIMINATED, 1, 0, 1), progress.get(6L));
         assertEquals(new TeamProgress(MatchRound.FINAL, TeamOutcome.CHAMPION, 1, 1, 0), progress.get(7L));
+    }
+
+    @Test
+    void publishLiveScorePublishesPointWithoutSavingAndCachesTeamNames() {
+        service.publishLiveScore(31L, DELEGATE, 1, 0);
+        service.publishLiveScore(31L, DELEGATE, 1, 1);
+
+        verify(matches, never()).save(any());
+        verify(scorePublisher).publishPoint(new ScoreEvent(31L, "USACH", "U. de Chile", 1, 0, ScoreEvent.TIPO_PUNTO));
+        verify(scorePublisher).publishPoint(new ScoreEvent(31L, "USACH", "U. de Chile", 1, 1, ScoreEvent.TIPO_PUNTO));
+        // Los nombres se resuelven una sola vez y luego salen de caché
+        verify(enrollments, times(1)).findByCompetitionIdAndTeamId(4L, 12L);
+        verify(enrollments, times(1)).findByCompetitionIdAndTeamId(4L, 15L);
+    }
+
+    @Test
+    void publishLiveScoreRejectsWrongDelegate() {
+        assertThrows(ForbiddenException.class, () -> service.publishLiveScore(31L, "otro-delegado", 1, 0));
+        assertThrows(ForbiddenException.class, () -> service.publishLiveScore(31L, null, 1, 0));
+        verifyNoInteractions(scorePublisher);
+        verify(matches, never()).save(any());
+    }
+
+    @Test
+    void publishLiveScoreRejectsMatchNotInProgress() {
+        match.setStatus(MatchStatus.SCHEDULED);
+        assertThrows(ConflictException.class, () -> service.publishLiveScore(31L, DELEGATE, 1, 0));
+        match.setStatus(MatchStatus.FINISHED);
+        assertThrows(ConflictException.class, () -> service.publishLiveScore(31L, DELEGATE, 1, 0));
+        verifyNoInteractions(scorePublisher);
+    }
+
+    @Test
+    void publishLiveScoreRejectsNegativeScore() {
+        assertThrows(ConflictException.class, () -> service.publishLiveScore(31L, DELEGATE, -1, 0));
+        assertThrows(ConflictException.class, () -> service.publishLiveScore(31L, DELEGATE, 0, -2));
+        verifyNoInteractions(scorePublisher);
+    }
+
+    @Test
+    void publishLiveScorePropagatesServiceUnavailableWhenKafkaIsDown() {
+        doThrow(new UpstreamServiceException("Kafka caído"))
+                .when(scorePublisher).publishPoint(any());
+
+        assertThrows(UpstreamServiceException.class, () -> service.publishLiveScore(31L, DELEGATE, 2, 1));
+        verify(matches, never()).save(any());
+    }
+
+    @Test
+    void startStillPersistsWhenKafkaIsDown() {
+        match.setStatus(MatchStatus.SCHEDULED);
+        doThrow(new RuntimeException("Kafka caído"))
+                .when(scorePublisher).publishAfterCommit(any());
+
+        Match started = service.start(31L, DELEGATE);
+
+        assertEquals(MatchStatus.IN_PROGRESS, started.getStatus());
+        verify(matches).save(match);
+        verify(scorePublisher).publishAfterCommit(
+                new ScoreEvent(31L, "USACH", "U. de Chile", 0, 0, ScoreEvent.TIPO_INICIADO));
+    }
+
+    @Test
+    void registerResultAndCorrectionPublishFinalizedEvent() {
+        service.registerResult(31L, DELEGATE, 2, 1);
+        service.registerResult(31L, DELEGATE, 3, 1);
+
+        verify(scorePublisher).publishAfterCommit(
+                new ScoreEvent(31L, "USACH", "U. de Chile", 2, 1, ScoreEvent.TIPO_FINALIZADO));
+        verify(scorePublisher).publishAfterCommit(
+                new ScoreEvent(31L, "USACH", "U. de Chile", 3, 1, ScoreEvent.TIPO_FINALIZADO));
     }
 
     static Match finished(Long id, Long competitionId, MatchRound round, Long homeTeamId, Long awayTeamId,
