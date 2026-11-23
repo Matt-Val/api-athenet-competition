@@ -64,11 +64,12 @@ jobs:
           IMAGE: ${{ needs.image.outputs.name }}:${{ github.sha }}
           DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          KAFKA_BOOTSTRAP_SERVERS: ${{ secrets.KAFKA_BOOTSTRAP_SERVERS }}
         with:
           host: ${{ secrets.EC2_APP_HOST }}
           username: ${{ secrets.EC2_SSH_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: IMAGE,DOCKERHUB_USERNAME,DOCKERHUB_TOKEN
+          envs: IMAGE,DOCKERHUB_USERNAME,DOCKERHUB_TOKEN,KAFKA_BOOTSTRAP_SERVERS
           command_timeout: 10m
           script: |
             set -eu
@@ -77,5 +78,9 @@ jobs:
             unset DOCKERHUB_TOKEN
             docker pull "$IMAGE"
             docker rm -f athenet-competition || true
+            set -- --env-file /opt/athenet/competition.env
+            if [ -n "${KAFKA_BOOTSTRAP_SERVERS:-}" ]; then
+              set -- "$@" -e "KAFKA_BOOTSTRAP_SERVERS=$KAFKA_BOOTSTRAP_SERVERS"
+            fi
             docker run -d --name athenet-competition --restart unless-stopped \
-              -p 8082:8082 --env-file /opt/athenet/competition.env "$IMAGE"
+              -p 8082:8082 "$@" "$IMAGE"
